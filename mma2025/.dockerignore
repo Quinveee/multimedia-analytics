@@ -1,0 +1,5 @@
+.venv
+.cache
+.ide
+**/__pychache__/
+dataset
