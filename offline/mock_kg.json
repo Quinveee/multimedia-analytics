@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    {"id": "dbr:Marie_Curie", "label": "Marie Curie", "abstract": "Polish-French physicist known for research on radioactivity.", "types": ["Person", "Scientist"], "image": "images/marie_curie.jpg"},
+    {"id": "dbr:Pierre_Curie", "label": "Pierre Curie", "abstract": "French physicist, pioneer in radioactivity research.", "types": ["Person", "Scientist"], "image": "images/pierre_curie.jpg"},
+    {"id": "dbr:Polonium", "label": "Polonium", "abstract": "Chemical element with symbol Po, atomic number 84.", "types": ["ChemicalElement"], "image": null},
+    {"id": "dbr:Nobel_Prize_in_Physics", "label": "Nobel Prize in Physics", "abstract": "Annual award for outstanding contributions in physics.", "types": ["Award"], "image": null}
+  ],
+  "edges": [
+    {"subject": "dbr:Marie_Curie", "predicate": "dbo:spouse", "object": "dbr:Pierre_Curie", "predicate_label": "spouse"},
+    {"subject": "dbr:Marie_Curie", "predicate": "dbo:knownFor", "object": "dbr:Polonium", "predicate_label": "known for"},
+    {"subject": "dbr:Marie_Curie", "predicate": "dbo:award", "object": "dbr:Nobel_Prize_in_Physics", "predicate_label": "award"},
+    {"subject": "dbr:Pierre_Curie", "predicate": "dbo:award", "object": "dbr:Nobel_Prize_in_Physics", "predicate_label": "award"}
+  ]
+}

@@ -1,0 +1,59 @@
+import json
+import re
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+QA_DIR = HERE.parent / "qa_dataset"
+OUT_DIR = HERE.parent / "data"
+
+URI_RE = re.compile(r"<(http://dbpedia\.org/[^>]+)>")
+
+
+def classify(uri: str) -> str | None:
+    if "/resource/" in uri:
+        return "entity"
+    local = uri.rsplit("/", 1)[-1]
+    if "/property/" in uri:
+        return "predicate"
+    if "/ontology/" in uri and not local[:1].isupper():
+        return "predicate"
+    return None
+
+
+def main() -> None:
+    entities: set[str] = set()
+    predicates: set[str] = set()
+    per_question: dict[str, dict[str, list[str]]] = {}
+
+    for fname in ("train-data.json", "test-data.json"):
+        for q in json.loads((QA_DIR / fname).read_text()):
+            q_ents, q_preds = set(), set()
+            for uri in URI_RE.findall(q.get("sparql_query", "")):
+                kind = classify(uri)
+                if kind == "entity":
+                    entities.add(uri)
+                    q_ents.add(uri)
+                elif kind == "predicate":
+                    predicates.add(uri)
+                    q_preds.add(uri)
+            per_question[q["_id"]] = {
+                "entities": sorted(q_ents),
+                "predicates": sorted(q_preds),
+            }
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out = {
+        "entities": sorted(entities),
+        "predicates": sorted(predicates),
+        "per_question": per_question,
+    }
+    (OUT_DIR / "uris.json").write_text(json.dumps(out, indent=2))
+
+    print(f"entities   : {len(entities)}")
+    print(f"predicates : {len(predicates)}")
+    print(f"questions  : {len(per_question)}")
+    print(f"written    : {OUT_DIR / 'uris.json'}")
+
+
+if __name__ == "__main__":
+    main()
