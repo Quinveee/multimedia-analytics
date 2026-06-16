@@ -2,6 +2,11 @@
 
 Interactive Visual Grounding of LLM Responses in Multimodal Knowledge Graphs
 
+## Repo structure
+
+- `mma2025/` — Plotly/Dash frontend app
+- `offline/` — offline data pipeline (KG subset construction from DBpedia + LC-QuAD)
+
 Large language models confidently produce answers but how do you know which facts they actually retrieved from structured knowledge, which facts they obtained using reasoning to provide valid answers, versus which ones they made up? Knowledge graphs (KGs) store high-quality factual triples about entities in the world, and multimodal KGs attach images and text to each entity, making them a rich substrate for multimedia analytics. Yet, the connection between what an LLM says and what the KG actually contains hasn’t been made visually inspectable.
 
 This project closes this gap. It is an interactive visual analytics dashboard that lets users ask natural language questions over a multimodal KG, reads the LLM’s answer claim by claim, and visually maps each claim back to its supporting KG triple or flags it as hallucinated. Users can then explore the subgraph, identify gaps in the KG’s multimodal coverage, add missing triples, and regenerate the answer to see hallucinations resolve in real time.

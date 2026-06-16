@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+.cache/
+
+# mma2025 demo artifacts (downloaded, not committed)
+mma2025/dataset/
+mma2025/.venv/
