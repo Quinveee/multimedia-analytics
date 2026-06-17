@@ -1,6 +1,6 @@
 from PIL import Image
 from dash import dcc
-import plotly.express 
+import plotly.express
 from src.Dataset import Dataset
 from src import config
 import plotly.graph_objects as go
@@ -16,36 +16,35 @@ def highlight_class_on_scatterplot(scatterplot, class_ids):
 
 def add_images_to_scatterplot(scatterplot_fig):
     scatterplot_fig['layout']['images'] = []
-    scatterplot_data = scatterplot_fig['data'][0]
-    scatter_image_ids = scatterplot_data['customdata']
-    scatter_x = scatterplot_data['x']
-    scatter_y = scatterplot_data['y']
 
-    min_x, max_x = scatterplot_fig['layout']['xaxis']['range']
-    min_y, max_y = scatterplot_fig['layout']['yaxis']['range']
+    min_x, max_x = map(float, scatterplot_fig['layout']['xaxis']['range'])
+    min_y, max_y = map(float, scatterplot_fig['layout']['yaxis']['range'])
+
+    x_col = scatterplot_fig['layout']['xaxis']['title']['text']
+    y_col = scatterplot_fig['layout']['yaxis']['title']['text']
+    dataset = Dataset.get()
 
     images_in_zoom = []
-    for x, y, image_id in zip(scatter_x, scatter_y, scatter_image_ids):
+    for image_id, row in dataset.iterrows():
+        x, y = row[x_col], row[y_col]
         if min_x <= x <= max_x and min_y <= y <= max_y:
             images_in_zoom.append((x, y, image_id))
         if len(images_in_zoom) > config.MAX_IMAGES_ON_SCATTERPLOT:
             return scatterplot_fig
 
-    if images_in_zoom:
-        for x, y, image_id in images_in_zoom:
-            image_path = Dataset.get().loc[image_id]['image_path']
-            scatterplot_fig['layout']['images'].append(dict(
-                x=x,
-                y=y,
-                source=Image.open(image_path),
-                xref="x",
-                yref="y",
-                sizex=.05,
-                sizey=.05,
-                xanchor="center",
-                yanchor="middle",
-            ))
-        return scatterplot_fig
+    for x, y, image_id in images_in_zoom:
+        image_path = dataset.loc[image_id]['image_path']
+        scatterplot_fig['layout']['images'].append(dict(
+            x=x,
+            y=y,
+            source=Image.open(image_path),
+            xref="x",
+            yref="y",
+            sizex=.05,
+            sizey=.05,
+            xanchor="center",
+            yanchor="middle",
+        ))
     return scatterplot_fig
 
 
@@ -111,8 +110,9 @@ def get_data_selected_on_scatterplot(scatterplot_fig):
     scatterplot_fig_data = scatterplot_fig['data'][0]
 
     if 'selectedpoints' in scatterplot_fig_data:
-        selected_image_ids = list(map(scatterplot_fig_data['customdata'].__getitem__, scatterplot_fig_data['selectedpoints']))
-        data_selected = Dataset.get().loc[selected_image_ids]
+        dataset = Dataset.get()
+        selected_image_ids = [dataset.index[i] for i in scatterplot_fig_data['selectedpoints']]
+        data_selected = dataset.loc[selected_image_ids]
     else:
         data_selected = Dataset.get()
 

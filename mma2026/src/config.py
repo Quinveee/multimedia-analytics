@@ -15,6 +15,9 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 VERIFIER = os.getenv("VERIFIER", "llm")   # "llm" | "nli"
 NLI_MODEL = os.getenv("NLI_MODEL", "cross-encoder/nli-deberta-v3-base")
 
+# ── Mock ──────────────────────────────────────────────────────────────────────
+MOCK = os.getenv("MOCK", "false").lower() == "true"
+
 # ── ui configuration ──────────────────────────────────────────────────────────
 # ui configuration
 IMAGE_GALLERY_SIZE = 24
@@ -30,8 +33,6 @@ MAX_IMAGES_ON_SCATTERPLOT = 100
 
 DEFAULT_PROJECTION = 'UMAP'
 DEFAULT_LEFT_WIDGET = 'table'
-
-MAX_GRAPH_NODES = 12
 
 GENERATED_IMAGE_SIZE = (200, 300)
 

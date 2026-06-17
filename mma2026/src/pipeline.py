@@ -46,4 +46,5 @@ if __name__ == "__main__":
 
     print("\n=== CLAIMS ===")
     for c in result["claims"]:
-        print(f"[{c['label'].upper()}] {c['claim']}")
+        span = f"  span=({c['start']}, {c['end']})" if c["start"] is not None else "  span=None"
+        print(f"[{c['label'].upper()}] {c['claim']}{span}")

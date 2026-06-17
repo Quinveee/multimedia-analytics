@@ -41,13 +41,13 @@ def _verify_nli(claim: str, triple_list: list[str]) -> str:
     return best_label
 
 
-def verify_claims(claims: list[str], triples: str) -> list[dict]:
+def verify_claims(claims: list[dict], triples: str) -> list[dict]:
     triple_list = [t for t in triples.splitlines() if t.strip()]
     results = []
-    for claim in claims:
+    for c in claims:
         if config.VERIFIER == "nli":
-            label = _verify_nli(claim, triple_list)
+            label = _verify_nli(c["claim"], triple_list)
         else:
-            label = _verify_llm(claim, triples)
-        results.append({"claim": claim, "label": label})
+            label = _verify_llm(c["claim"], triples)
+        results.append({**c, "label": label})
     return results

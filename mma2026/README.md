@@ -1,8 +1,8 @@
 ## Local
 ### Setup
 ```
-git clone https://github.com/GoncaloBFM/mma2025
-cd mma2025
+git clone https://github.com/GoncaloBFM/mma2026
+cd mma2026
 python -m venv .venv
 source .venv/bin/activate (for Windows run: .venv\Scripts\activate)
 pip install -r requirements.txt

@@ -1,7 +1,9 @@
+import os
 from openai import OpenAI
 import config
 
 _client = None
+MOCK = os.getenv("MOCK", "false").lower() == "true"
 
 
 def _get_client() -> OpenAI:
@@ -15,6 +17,8 @@ def _get_client() -> OpenAI:
 
 
 def _chat(messages: list[dict]) -> str:
+    if MOCK:
+        return "[MOCK] This is a dummy LLM response."
     resp = _get_client().chat.completions.create(
         model=config.LLM_MODEL,
         messages=messages,
@@ -43,7 +47,7 @@ def answer_grounded(question: str, triples: str) -> str:
     ])
 
 
-def decompose_claims(answer: str) -> list[str]:
+def decompose_claims(answer: str) -> list[dict]:
     import re
     prompt = (
         "Break the following answer into a list of atomic factual claims. "
@@ -53,5 +57,16 @@ def decompose_claims(answer: str) -> list[str]:
         f"Answer: {answer}"
     )
     raw = _chat([{"role": "user", "content": prompt}])
-    claims = [line.strip() for line in raw.splitlines() if line.strip()]
-    return [c for c in claims if not re.fullmatch(r".*\[T\d+\].*", c)]
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    claims = [l for l in lines if not re.fullmatch(r".*\[T\d+\].*", l)]
+
+    result = []
+    search_from = 0
+    for claim in claims:
+        idx = answer.find(claim, search_from)
+        if idx != -1:
+            result.append({"claim": claim, "start": idx, "end": idx + len(claim)})
+            search_from = idx + len(claim)
+        else:
+            result.append({"claim": claim, "start": None, "end": None})
+    return result

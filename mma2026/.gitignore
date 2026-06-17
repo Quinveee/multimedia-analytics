@@ -1,4 +1,5 @@
 dataset
+.DS_Store
 .cache
 .idea
 .venv
