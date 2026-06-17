@@ -1,20 +1,17 @@
 import argparse
 
-from services.kg import get_subgraph, load_kg, triples_as_text
+import config
+from services.kg import KG, triples_as_text
 from services.llm import answer_closed, answer_grounded, decompose_claims
 from services.spotlight import link_entities
 from services.verifier import verify_claims
 
 
-def run(question: str, kg_path=None) -> dict:
-    kg = load_kg(kg_path) if kg_path else load_kg()
+def run(question: str) -> dict:
+    entities = link_entities(question)
+    entity_uris = [e["uri"] for e in entities]
 
-    entity_uris = link_entities(question)
-    if not entity_uris:
-        q_lower = question.lower()
-        entity_uris = [n["id"] for n in kg["nodes"] if n["label"].lower() in q_lower]
-
-    subgraph = get_subgraph(entity_uris, kg)
+    subgraph = KG.get_subgraph(entity_uris, k=config.KG_HOP)
     triples = triples_as_text(subgraph)
 
     closed = answer_closed(question)
@@ -25,7 +22,7 @@ def run(question: str, kg_path=None) -> dict:
 
     return {
         "question": question,
-        "entity_uris": entity_uris,
+        "entities": entities,
         "subgraph": subgraph,
         "triples": triples,
         "answer_closed": closed,
@@ -37,10 +34,9 @@ def run(question: str, kg_path=None) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--question", required=True)
-    parser.add_argument("--kg", default=None, help="path to kg_subset.json")
     args = parser.parse_args()
 
-    result = run(args.question, args.kg)
+    result = run(args.question)
 
     print("\n=== SUBGRAPH ===")
     print(

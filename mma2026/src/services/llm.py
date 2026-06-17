@@ -1,6 +1,7 @@
 import os
-from openai import OpenAI
+
 import config
+from openai import OpenAI
 
 _client = None
 MOCK = os.getenv("MOCK", "false").lower() == "true"
@@ -28,10 +29,15 @@ def _chat(messages: list[dict]) -> str:
 
 
 def answer_closed(question: str) -> str:
-    return _chat([
-        {"role": "system", "content": "Answer the question concisely based on your knowledge."},
-        {"role": "user", "content": question},
-    ])
+    return _chat(
+        [
+            {
+                "role": "system",
+                "content": "Answer the question based on your knowledge.",
+            },
+            {"role": "user", "content": question},
+        ]
+    )
 
 
 def answer_grounded(question: str, triples: str) -> str:
@@ -41,14 +47,17 @@ def answer_grounded(question: str, triples: str) -> str:
         "Cite each fact as [T1], [T2], etc. based on the triple order.\n\n"
         f"Triples:\n{triples}"
     )
-    return _chat([
-        {"role": "system", "content": system},
-        {"role": "user", "content": question},
-    ])
+    return _chat(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": question},
+        ]
+    )
 
 
 def decompose_claims(answer: str) -> list[dict]:
     import re
+
     prompt = (
         "Break the following answer into a list of atomic factual claims. "
         "One claim per line, no bullet points. "

@@ -3,6 +3,7 @@ from pathlib import Path
 
 # ── KG ────────────────────────────────────────────────────────────────────────
 KG_PATH = Path(os.getenv("KG_PATH", "../offline/mock_kg.json"))
+KG_HOP = int(os.getenv("KG_HOP", "1"))
 
 # ── Spotlight ─────────────────────────────────────────────────────────────────
 SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate")
