@@ -4,6 +4,9 @@ from pathlib import Path
 # ── KG ────────────────────────────────────────────────────────────────────────
 KG_PATH = Path(os.getenv("KG_PATH", "../offline/mock_kg.json"))
 
+# ── Spotlight ─────────────────────────────────────────────────────────────────
+SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate")
+
 # ── LLM ───────────────────────────────────────────────────────────────────────
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
 LLM_API_KEY = os.getenv("OPENAI_API_KEY", "dummy")

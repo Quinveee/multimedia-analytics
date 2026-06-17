@@ -1,6 +1,8 @@
 import requests
+import config
 
-_SPOTLIGHT_URL = "https://api.dbpedia-spotlight.org/en/annotate"
+
+_SPOTLIGHT_URL = config.SPOTLIGHT_URL
 
 
 def link_entities(question: str) -> list[str]:
