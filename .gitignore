@@ -10,3 +10,12 @@ venv/
 .vscode/
 .DS_Store
 .cache/
+
+# Slurm logs
+vllm/logs/
+spotlight/logs/
+*.out
+
+# Spotlight artifacts
+spotlight/dbpedia-spotlight.jar
+spotlight/models/
