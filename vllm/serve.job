@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --job-name=vllm-serve
+#SBATCH --partition=gpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gpus=1
+#SBATCH --time=04:00:00
+#SBATCH --mem=32G
+#SBATCH --output=vllm_%j.out
+
+module purge
+module load 2023
+module load Python/3.11.3-GCCcore-12.3.0
+
+source $HOME/vllm-env/bin/activate
+
+python -m vllm.entrypoints.openai.api_server \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --port 8000 \
+    --max-model-len 8192
