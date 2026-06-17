@@ -10,7 +10,3 @@ venv/
 .vscode/
 .DS_Store
 .cache/
-
-# mma2025 demo artifacts (downloaded, not committed)
-mma2025/dataset/
-mma2025/.venv/
