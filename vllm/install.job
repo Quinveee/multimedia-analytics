@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
-#SBATCH --job-name=vllm-serve
+#SBATCH --job-name=vllm-install
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --time=04:00:00
-#SBATCH --output=vllm/logs/serve_%j.out
+#SBATCH --time=01:00:00
+#SBATCH --output=vllm/logs/install_%j.out
 
 set -e
 
@@ -19,9 +19,10 @@ module load CUDA/12.1.1
 
 source $(conda info --base)/etc/profile.d/conda.sh
 
+if ! conda env list | grep -q "^vllm-env "; then
+    conda create -y -n vllm-env python=3.11
+fi
+
 conda activate vllm-env
 
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --port 8267 \
-    --max-model-len 8192
+pip install vllm
