@@ -2,8 +2,7 @@ import os
 from pathlib import Path
 
 # ── KG ────────────────────────────────────────────────────────────────────────
-REPO_ROOT = Path(__file__).resolve().parents[2]
-KG_PATH = Path(os.getenv("KG_PATH", str(REPO_ROOT / "offline" / "mock_kg.json")))
+KG_PATH = Path(os.getenv("KG_PATH", "../offline/mock_kg.json"))
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")

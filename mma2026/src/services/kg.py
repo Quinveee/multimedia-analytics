@@ -1,26 +1,21 @@
 import json
 from pathlib import Path
 
-_DEFAULT_KG = Path(__file__).resolve().parents[3] / "offline" / "mock_kg.json"
+import config
 
 
-def load_kg(path: Path = _DEFAULT_KG) -> dict:
-    return json.loads(path.read_text())
+def load_kg(path: Path = None) -> dict:
+    return json.loads(Path(path or config.KG_PATH).read_text())
 
 
-def get_subgraph(question: str, kg: dict) -> dict:
-    q_lower = question.lower()
-    matched = {
-        n["id"] for n in kg["nodes"]
-        if n["label"].lower() in q_lower
-    }
+def get_subgraph(entity_uris: list[str], kg: dict) -> dict:
+    matched = {n["id"] for n in kg["nodes"] if n["id"] in entity_uris}
 
     if not matched:
         return {"nodes": [], "edges": []}
 
     edges = [
-        e for e in kg["edges"]
-        if e["subject"] in matched or e["object"] in matched
+        e for e in kg["edges"] if e["subject"] in matched or e["object"] in matched
     ]
 
     node_ids = {e["subject"] for e in edges} | {e["object"] for e in edges} | matched

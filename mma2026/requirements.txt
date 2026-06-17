@@ -12,6 +12,7 @@ scikit-learn
 wget
 dash-holoniq-wordcloud
 openai
+requests
 torch
 torchvision
 diffusers

@@ -1,13 +1,20 @@
 import argparse
-import json
-from services.kg import load_kg, get_subgraph, triples_as_text
+
+from services.kg import get_subgraph, load_kg, triples_as_text
 from services.llm import answer_closed, answer_grounded, decompose_claims
+from services.spotlight import link_entities
 from services.verifier import verify_claims
 
 
 def run(question: str, kg_path=None) -> dict:
     kg = load_kg(kg_path) if kg_path else load_kg()
-    subgraph = get_subgraph(question, kg)
+
+    entity_uris = link_entities(question)
+    if not entity_uris:
+        q_lower = question.lower()
+        entity_uris = [n["id"] for n in kg["nodes"] if n["label"].lower() in q_lower]
+
+    subgraph = get_subgraph(entity_uris, kg)
     triples = triples_as_text(subgraph)
 
     closed = answer_closed(question)
@@ -18,6 +25,7 @@ def run(question: str, kg_path=None) -> dict:
 
     return {
         "question": question,
+        "entity_uris": entity_uris,
         "subgraph": subgraph,
         "triples": triples,
         "answer_closed": closed,
@@ -35,7 +43,9 @@ if __name__ == "__main__":
     result = run(args.question, args.kg)
 
     print("\n=== SUBGRAPH ===")
-    print(f"{len(result['subgraph']['nodes'])} nodes, {len(result['subgraph']['edges'])} edges")
+    print(
+        f"{len(result['subgraph']['nodes'])} nodes, {len(result['subgraph']['edges'])} edges"
+    )
     print(result["triples"] or "(no triples found)")
 
     print("\n=== CLOSED-BOOK ANSWER ===")
@@ -46,5 +56,9 @@ if __name__ == "__main__":
 
     print("\n=== CLAIMS ===")
     for c in result["claims"]:
-        span = f"  span=({c['start']}, {c['end']})" if c["start"] is not None else "  span=None"
+        span = (
+            f"  span=({c['start']}, {c['end']})"
+            if c["start"] is not None
+            else "  span=None"
+        )
         print(f"[{c['label'].upper()}] {c['claim']}{span}")
