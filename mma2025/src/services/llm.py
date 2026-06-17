@@ -1,5 +1,5 @@
-import os
 from openai import OpenAI
+import config
 
 _client = None
 
@@ -8,20 +8,17 @@ def _get_client() -> OpenAI:
     global _client
     if _client is None:
         _client = OpenAI(
-            api_key=os.getenv("OPENAI_API_KEY", "dummy"),
-            base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
+            api_key=config.LLM_API_KEY,
+            base_url=config.LLM_BASE_URL,
         )
     return _client
 
 
-MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-
-
 def _chat(messages: list[dict]) -> str:
     resp = _get_client().chat.completions.create(
-        model=MODEL,
+        model=config.LLM_MODEL,
         messages=messages,
-        temperature=0.2,
+        temperature=config.LLM_TEMPERATURE,
     )
     return resp.choices[0].message.content.strip()
 
@@ -47,10 +44,14 @@ def answer_grounded(question: str, triples: str) -> str:
 
 
 def decompose_claims(answer: str) -> list[str]:
+    import re
     prompt = (
         "Break the following answer into a list of atomic factual claims. "
-        "One claim per line, no bullet points.\n\n"
+        "One claim per line, no bullet points. "
+        "Do not include citation references like [T1] as separate claims — "
+        "only extract the actual facts.\n\n"
         f"Answer: {answer}"
     )
     raw = _chat([{"role": "user", "content": prompt}])
-    return [line.strip() for line in raw.splitlines() if line.strip()]
+    claims = [line.strip() for line in raw.splitlines() if line.strip()]
+    return [c for c in claims if not re.fullmatch(r".*\[T\d+\].*", c)]

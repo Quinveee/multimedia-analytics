@@ -1,6 +1,21 @@
 import os
 from pathlib import Path
 
+# ── KG ────────────────────────────────────────────────────────────────────────
+REPO_ROOT = Path(__file__).resolve().parents[2]
+KG_PATH = Path(os.getenv("KG_PATH", str(REPO_ROOT / "offline" / "mock_kg.json")))
+
+# ── LLM ───────────────────────────────────────────────────────────────────────
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
+LLM_API_KEY = os.getenv("OPENAI_API_KEY", "dummy")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+
+# ── Verifier ──────────────────────────────────────────────────────────────────
+VERIFIER = os.getenv("VERIFIER", "llm")   # "llm" | "nli"
+NLI_MODEL = os.getenv("NLI_MODEL", "cross-encoder/nli-deberta-v3-base")
+
+# ── ui configuration ──────────────────────────────────────────────────────────
 # ui configuration
 IMAGE_GALLERY_SIZE = 24
 IMAGE_GALLERY_ROW_SIZE = 4
