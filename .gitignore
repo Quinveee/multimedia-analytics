@@ -14,3 +14,13 @@ venv/
 # mma2025 demo artifacts (downloaded, not committed)
 mma2025/dataset/
 mma2025/.venv/
+
+# archives
+*.bz2
+
+# Generated pipeline artifacts (large; regenerate via offline/main.py).
+# uris.json is small and kept tracked as a reference.
+offline/data/triples.json
+offline/data/kg_subset.json
+offline/data/validated_questions.json
+offline/data/images/

@@ -2,6 +2,8 @@ import json
 import re
 from pathlib import Path
 
+from uri_norm import canonical_uri
+
 HERE = Path(__file__).resolve().parent
 QA_DIR = HERE.parent / "qa_dataset"
 OUT_DIR = HERE.parent / "data"
@@ -20,15 +22,16 @@ def classify(uri: str) -> str | None:
     return None
 
 
-def main() -> None:
+def run() -> None:
     entities: set[str] = set()
     predicates: set[str] = set()
     per_question: dict[str, dict[str, list[str]]] = {}
 
     for fname in ("train-data.json", "test-data.json"):
-        for q in json.loads((QA_DIR / fname).read_text()):
+        for q in json.loads((QA_DIR / fname).read_text(encoding="utf-8")):
             q_ents, q_preds = set(), set()
             for uri in URI_RE.findall(q.get("sparql_query", "")):
+                uri = canonical_uri(uri)
                 kind = classify(uri)
                 if kind == "entity":
                     entities.add(uri)
@@ -47,7 +50,7 @@ def main() -> None:
         "predicates": sorted(predicates),
         "per_question": per_question,
     }
-    (OUT_DIR / "uris.json").write_text(json.dumps(out, indent=2))
+    (OUT_DIR / "uris.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
 
     print(f"entities   : {len(entities)}")
     print(f"predicates : {len(predicates)}")
@@ -56,4 +59,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run()
