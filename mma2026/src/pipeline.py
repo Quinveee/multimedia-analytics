@@ -1,27 +1,30 @@
 import argparse
 
 import config
-from services.kg import KG, triples_as_text
-from services.llm import answer_closed, answer_grounded, decompose_claims
+from services.kg import KG, verbalise_triples
+from services.llm import answer_closed, answer_grounded, parse_claims
 from services.spotlight import link_entities
 from services.verifier import verify_claims
 
 
-def run(question: str) -> dict:
+def run(question: str, answer_model: str = None) -> dict:
+    answer_model = answer_model or config.ANSWER_MODEL
+
     entities = link_entities(question)
     entity_uris = [e["uri"] for e in entities]
 
     subgraph = KG.get_subgraph(entity_uris, k=config.KG_HOP)
-    triples = triples_as_text(subgraph)
+    triples = verbalise_triples(subgraph, question, entity_uris)
 
-    closed = answer_closed(question)
-    grounded = answer_grounded(question, triples) if triples else closed
+    closed = answer_closed(question, model=answer_model)
+    grounded = answer_grounded(question, triples, model=answer_model) if triples else closed
 
-    claims = decompose_claims(grounded)
+    claims = parse_claims(grounded)
     verified = verify_claims(claims, triples)
 
     return {
         "question": question,
+        "answer_model": config.resolve_llm(answer_model)[3],
         "entities": entities,
         "subgraph": subgraph,
         "triples": triples,
@@ -34,14 +37,15 @@ def run(question: str) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--question", required=True)
+    parser.add_argument("--answer-model", default=None, help="small | big | gpt-4o | claude-* | gemini-*")
     args = parser.parse_args()
 
-    result = run(args.question)
+    result = run(args.question, answer_model=args.answer_model)
+
+    print(f"\n=== ANSWER MODEL: {result['answer_model']} ===")
 
     print("\n=== SUBGRAPH ===")
-    print(
-        f"{len(result['subgraph']['nodes'])} nodes, {len(result['subgraph']['edges'])} edges"
-    )
+    print(f"{len(result['subgraph']['nodes'])} nodes, {len(result['subgraph']['edges'])} edges")
     print(result["triples"] or "(no triples found)")
 
     print("\n=== CLOSED-BOOK ANSWER ===")
@@ -52,9 +56,6 @@ if __name__ == "__main__":
 
     print("\n=== CLAIMS ===")
     for c in result["claims"]:
-        span = (
-            f"  span=({c['start']}, {c['end']})"
-            if c["start"] is not None
-            else "  span=None"
-        )
-        print(f"[{c['label'].upper()}] {c['claim']}{span}")
+        span = f"  span=({c['start']}, {c['end']})" if c["start"] is not None else "  span=None"
+        cited = f"  cited={c['cited_triples']}" if c["cited_triples"] else ""
+        print(f"[{c['label'].upper()}] {c['claim']}{cited}{span}")

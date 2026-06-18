@@ -8,10 +8,10 @@ def link_entities(question: str) -> list[dict]:
     """Call DBpedia Spotlight to extract entities from a question.
 
     Returns a list of dicts, e.g.:
-    [{"uri": "dbr:Marie_Curie", "surface_form": "Marie Curie", "offset": 7}]
+    [{"uri": "dbr:Marie_Curie", "surface_form": "Marie Curie", "start": 7, "end": 18}]
 
-    surface_form can be used by the frontend to highlight the matched span in the question.
-    offset is the character position in the original question string (for precision if needed).
+    start/end are character offsets into the original question string, ready for frontend
+    highlighting. Spotlight only gives @offset (start); end is derived as start + len(surface_form).
 
     Example Spotlight resource entry:
     {
@@ -36,7 +36,8 @@ def link_entities(question: str) -> list[dict]:
         {
             "uri": r["@URI"].replace("http://dbpedia.org/resource/", "dbr:"),
             "surface_form": r["@surfaceForm"],
-            "offset": int(r["@offset"]),
+            "start": int(r["@offset"]),
+            "end": int(r["@offset"]) + len(r["@surfaceForm"]),
         }
         for r in resources
     ]

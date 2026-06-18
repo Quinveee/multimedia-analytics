@@ -4,18 +4,44 @@ from pathlib import Path
 # ── KG ────────────────────────────────────────────────────────────────────────
 KG_PATH = Path(os.getenv("KG_PATH", "../offline/mock_kg.json"))
 KG_HOP = int(os.getenv("KG_HOP", "1"))
+KG_MAX_TRIPLES = int(os.getenv("KG_MAX_TRIPLES", "30"))
 
 # ── Spotlight ─────────────────────────────────────────────────────────────────
 SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate")
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-LLM_API_KEY = os.getenv("OPENAI_API_KEY", "dummy")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+ANSWER_MODEL = os.getenv("ANSWER_MODEL", "gpt-4o-mini")
+CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", "gpt-4o-mini")
+VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", "gpt-4o-mini")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
+# API keys — each provider reads its own env var
+OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "dummy")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "dummy")
+GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "dummy")
+
+# vLLM endpoints on Snellius
+LLM_SMALL_URL   = os.getenv("LLM_SMALL_URL",   "http://localhost:8267/v1")
+LLM_SMALL_MODEL = os.getenv("LLM_SMALL_MODEL",  "Qwen/Qwen2.5-7B-Instruct")
+LLM_BIG_URL     = os.getenv("LLM_BIG_URL",     "http://localhost:8268/v1")
+LLM_BIG_MODEL   = os.getenv("LLM_BIG_MODEL",   "Qwen/Qwen2.5-72B-Instruct")
+
+
+def resolve_llm(model: str) -> tuple[str, str, str, str]:
+    """Return (provider, base_url, api_key, model_name) from a model identifier."""
+    m = model.lower()
+    if m == "small":
+        return "vllm", LLM_SMALL_URL, "dummy", LLM_SMALL_MODEL
+    if m == "big":
+        return "vllm", LLM_BIG_URL, "dummy", LLM_BIG_MODEL
+    if m.startswith("claude"):
+        return "anthropic", None, ANTHROPIC_API_KEY, model
+    if m.startswith("gemini"):
+        return "gemini", "https://generativelanguage.googleapis.com/v1beta/openai/", GEMINI_API_KEY, model
+    return "openai", "https://api.openai.com/v1", OPENAI_API_KEY, model
+
 # ── Verifier ──────────────────────────────────────────────────────────────────
-VERIFIER = os.getenv("VERIFIER", "llm")   # "llm" | "nli"
+VERIFIER = os.getenv("VERIFIER", "nli")   # "llm" | "nli"
 NLI_MODEL = os.getenv("NLI_MODEL", "cross-encoder/nli-deberta-v3-base")
 
 # ── Mock ──────────────────────────────────────────────────────────────────────
