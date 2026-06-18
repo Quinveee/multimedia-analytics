@@ -119,7 +119,7 @@ def _order(bgp: list[tuple]) -> list[tuple]:
     def rank(pattern):
         s, p, o = pattern
         n_const = sum(isinstance(t, URIRef) for t in (s, o))
-        return (-n_const, str(p) == TYPE_IRI)
+        return -n_const, str(p) == TYPE_IRI
     return sorted(bgp, key=rank)
 
 

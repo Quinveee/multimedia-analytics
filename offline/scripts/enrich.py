@@ -60,7 +60,6 @@ def stream_types(dump_path: Path, targets: set[str]) -> dict[str, list[str]]:
 #   labels_en.ttl.bz2          (174M)
 #   short_abstracts_en.ttl.bz2 (503M)
 #   instance_types_en.ttl.bz2  (41M)
-# TODO: image field is always null — needs Wikipedia/MMpedia image fetch pass.
 def run() -> None:
     print("loading triples...")
     nodes, edges = load_nodes_and_edges()

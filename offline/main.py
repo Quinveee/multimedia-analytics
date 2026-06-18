@@ -40,6 +40,7 @@ STAGES = [
     ("neighbourhood", "build bidirectional hop-1 neighbourhood"),
     ("enrich", "enrich nodes (labels / abstracts / types)"),
     ("validate", "validate against gold queries"),
+    ("images", "attach MMpedia thumbnails + coverage.csv"),
 ]
 
 log = logging.getLogger("pipeline")

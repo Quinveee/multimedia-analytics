@@ -24,3 +24,7 @@ offline/data/triples.json
 offline/data/kg_subset.json
 offline/data/validated_questions.json
 offline/data/images/
+offline/data/coverage.csv
+
+# MMpedia download dir (entity2image.json ~1.4 GB + Entlist*.tar ~3 GB each)
+offline/mmpedia/
