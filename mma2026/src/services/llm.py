@@ -55,7 +55,10 @@ def _chat(messages: list[dict], model: str = None) -> str:
 def answer_closed(question: str, model: str = None) -> str:
     return _chat(
         [
-            {"role": "system", "content": "Answer the question based on your knowledge."},
+            {
+                "role": "system",
+                "content": "Answer the question based on your knowledge.",
+            },
             {"role": "user", "content": question},
         ],
         model=model,
@@ -90,33 +93,41 @@ def parse_claims(answer: str) -> list[dict]:
     matches = list(re.finditer(r"\[T(\d+)\]", answer))
     if not matches:
         clean = answer.strip()
-        return [{"claim": clean, "cited_triples": [], "start": 0, "end": len(answer)}] if clean else []
+        return (
+            [{"claim": clean, "cited_triples": [], "start": 0, "end": len(answer)}]
+            if clean
+            else []
+        )
 
     result = []
     last_boundary = 0
 
     for match in matches:
         t_idx = int(match.group(1))
-        chunk = answer[last_boundary:match.start()]
+        chunk = answer[last_boundary : match.start()]
         clean = re.sub(r"^[\s.,;]+", "", chunk).strip()
         if clean:
-            result.append({
-                "claim": clean,
-                "cited_triples": [t_idx],
-                "start": last_boundary,
-                "end": match.end(),
-            })
+            result.append(
+                {
+                    "claim": clean,
+                    "cited_triples": [t_idx],
+                    "start": last_boundary,
+                    "end": match.end(),
+                }
+            )
         last_boundary = match.end()
 
     # trailing uncited text
     tail = re.sub(r"^[\s.,;]+", "", answer[last_boundary:]).strip()
     if tail:
-        result.append({
-            "claim": tail,
-            "cited_triples": [],
-            "start": last_boundary,
-            "end": len(answer),
-        })
+        result.append(
+            {
+                "claim": tail,
+                "cited_triples": [],
+                "start": last_boundary,
+                "end": len(answer),
+            }
+        )
 
     return result
 

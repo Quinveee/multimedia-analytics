@@ -1,15 +1,18 @@
 import config
 from services.llm import _chat
 
-_nli_pipe = None
+_nli_model = None
+
+_NLI_LABELS = ["contradiction", "entailment", "neutral"]
 
 
 def _get_nli():
-    global _nli_pipe
-    if _nli_pipe is None:
-        from transformers import pipeline
-        _nli_pipe = pipeline("zero-shot-classification", model=config.NLI_MODEL)
-    return _nli_pipe
+    global _nli_model
+    if _nli_model is None:
+        from sentence_transformers import CrossEncoder
+
+        _nli_model = CrossEncoder(config.NLI_MODEL)
+    return _nli_model
 
 
 def _verify_llm(claim: str, triples: str) -> str:
@@ -22,27 +25,26 @@ def _verify_llm(claim: str, triples: str) -> str:
         f"Claim: {claim}\n\n"
         f"Reply with only one word: supported, inferred, or unverifiable."
     )
-    label = _chat([{"role": "user", "content": prompt}], model=config.VERIFIER_MODEL).lower().strip()
-    return label if label in ("supported", "inferred", "unverifiable") else "unverifiable"
+    label = (
+        _chat([{"role": "user", "content": prompt}], model=config.VERIFIER_MODEL)
+        .lower()
+        .strip()
+    )
+    return (
+        label if label in ("supported", "inferred", "unverifiable") else "unverifiable"
+    )
 
 
 def _verify_nli(claim: str, cited_triple_texts: list[str]) -> str:
-    nli = _get_nli()
-    best_score, best_label = 0.0, "unverifiable"
-    for triple in cited_triple_texts:
-        result = nli(
-            claim,
-            candidate_labels=["entailment", "neutral", "contradiction"],
-            hypothesis_template="{}",
-            multi_label=False,
-        )
-        scores = dict(zip(result["labels"], result["scores"]))
-        if scores.get("entailment", 0) > 0.7 and scores["entailment"] > best_score:
-            best_score = scores["entailment"]
-            best_label = "supported"
-        elif scores.get("neutral", 0) > 0.6 and best_label == "unverifiable":
-            best_label = "inferred"
-    return best_label
+    model = _get_nli()
+    pairs = [(triple, claim) for triple in cited_triple_texts]
+    scores = model.predict(pairs)
+    labels = [_NLI_LABELS[s] for s in scores.argmax(axis=1)]
+    if "entailment" in labels:
+        return "supported"
+    if "neutral" in labels:
+        return "inferred"
+    return "unverifiable"
 
 
 def verify_claims(claims: list[dict], triples: str) -> list[dict]:
@@ -52,12 +54,13 @@ def verify_claims(claims: list[dict], triples: str) -> list[dict]:
         cited = c.get("cited_triples", [])
         if not cited:
             label = "unverifiable"
-        elif config.VERIFIER == "nli":
-            # resolve 1-based indices to triple text
-            cited_texts = [triple_lines[i - 1] for i in cited if 0 < i <= len(triple_lines)]
-            label = _verify_nli(c["claim"], cited_texts)
         else:
-            cited_texts = [triple_lines[i - 1] for i in cited if 0 < i <= len(triple_lines)]
-            label = _verify_llm(c["claim"], "\n".join(cited_texts))
+            cited_texts = [
+                triple_lines[i - 1] for i in cited if 0 < i <= len(triple_lines)
+            ]
+            if config.VERIFIER == "nli":
+                label = _verify_nli(c["claim"], cited_texts)
+            else:
+                label = _verify_llm(c["claim"], "\n".join(cited_texts))
         results.append({**c, "label": label})
     return results

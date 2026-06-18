@@ -17,7 +17,9 @@ def run(question: str, answer_model: str = None) -> dict:
     triples = verbalise_triples(subgraph, question, entity_uris)
 
     closed = answer_closed(question, model=answer_model)
-    grounded = answer_grounded(question, triples, model=answer_model) if triples else closed
+    grounded = (
+        answer_grounded(question, triples, model=answer_model) if triples else closed
+    )
 
     claims = parse_claims(grounded)
     verified = verify_claims(claims, triples)
@@ -37,7 +39,11 @@ def run(question: str, answer_model: str = None) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--question", required=True)
-    parser.add_argument("--answer-model", default=None, help="small | big | gpt-4o | claude-* | gemini-*")
+    parser.add_argument(
+        "--answer-model",
+        default=None,
+        help="small | big | gpt-4o | claude-* | gemini-*",
+    )
     args = parser.parse_args()
 
     result = run(args.question, answer_model=args.answer_model)
@@ -45,7 +51,9 @@ if __name__ == "__main__":
     print(f"\n=== ANSWER MODEL: {result['answer_model']} ===")
 
     print("\n=== SUBGRAPH ===")
-    print(f"{len(result['subgraph']['nodes'])} nodes, {len(result['subgraph']['edges'])} edges")
+    print(
+        f"{len(result['subgraph']['nodes'])} nodes, {len(result['subgraph']['edges'])} edges"
+    )
     print(result["triples"] or "(no triples found)")
 
     print("\n=== CLOSED-BOOK ANSWER ===")
@@ -56,6 +64,10 @@ if __name__ == "__main__":
 
     print("\n=== CLAIMS ===")
     for c in result["claims"]:
-        span = f"  span=({c['start']}, {c['end']})" if c["start"] is not None else "  span=None"
+        span = (
+            f"  span=({c['start']}, {c['end']})"
+            if c["start"] is not None
+            else "  span=None"
+        )
         cited = f"  cited={c['cited_triples']}" if c["cited_triples"] else ""
         print(f"[{c['label'].upper()}] {c['claim']}{cited}{span}")

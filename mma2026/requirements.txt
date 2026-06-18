@@ -18,6 +18,7 @@ torch
 torchvision
 diffusers
 transformers
+sentence-transformers
 accelerate
 pillow
 safetensors
