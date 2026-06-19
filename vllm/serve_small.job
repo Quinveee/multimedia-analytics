@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
-#SBATCH --job-name=vllm-serve
+#SBATCH --job-name=vllm-small
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --time=04:00:00
-#SBATCH --output=vllm/logs/serve_%j.out
+#SBATCH --output=vllm/logs/serve_small_%j.out
 
 set -e
 

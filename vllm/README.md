@@ -11,7 +11,8 @@ sbatch vllm/install.job
 ## 2. Serve
 
 ```bash
-sbatch vllm/serve.job
+sbatch vllm/serve_small.job   # Qwen2.5-7B  → port 8267
+sbatch vllm/serve_big.job     # Qwen2.5-72B → port 8268
 ```
 
 Check the node: `squeue -u $USER`
@@ -19,20 +20,13 @@ Check the node: `squeue -u $USER`
 ## 3. SSH tunnel (local machine)
 
 ```bash
-ssh -L 8267:<node>:8267 snellius
-```
-
-## 4. Run pipeline
-
-```bash
-cd mma2025/src
-LLM_BASE_URL=http://localhost:8267/v1 LLM_MODEL=Qwen/Qwen2.5-7B-Instruct \
-python3 pipeline.py --question "Who did Marie Curie marry?"
+ssh -N -L 8267:<node>:8267 scur0267@snellius.surf.nl   # small
+ssh -N -L 8268:<node>:8268 scur0267@snellius.surf.nl   # big
 ```
 
 ## Models
 
-| Model | GPU mem |
-|---|---|
-| `Qwen/Qwen2.5-7B-Instruct` | ~16 GB |
-| `Qwen/Qwen2.5-72B-Instruct` | ~160 GB |
+| Job | Model | GPU mem | GPUs | Port |
+|---|---|---|---|---|
+| `serve_small.job` | `Qwen/Qwen2.5-7B-Instruct` | ~16 GB | 1 | 8267 |
+| `serve_big.job` | `Qwen/Qwen2.5-72B-Instruct` | ~160 GB | 2 | 8268 |
