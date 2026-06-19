@@ -57,6 +57,6 @@ uv run python3 src/demo.py
 
 Then open http://127.0.0.1:8050. Ask a question, see grounded + closed-book answers with claim highlighting. Select nodes in the subgraph to re-run with a filtered KG context.
 
-The pipeline entry point is `run_pipeline()` in `src/pipeline.py` — see the docstring for the full return shape.
+The pipeline entry point is `run_pipeline()` in `src/pipeline.py`, see the docstring for the full return shape.
 
 Models, API keys, and endpoints can be configured via env vars or directly in `src/config.py`.

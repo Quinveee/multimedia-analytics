@@ -64,7 +64,7 @@ app.layout = dbc.Container(
             style={"display": "none"},
             children=[
                 html.Hr(),
-                html.H5("Subgraph — select nodes to filter, then re-run:"),
+                html.H5("Subgraph : select nodes to filter, then re-run:"),
                 cyto.Cytoscape(
                     id="cytoscape",
                     layout={"name": "cose"},

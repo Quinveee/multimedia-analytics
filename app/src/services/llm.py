@@ -237,7 +237,7 @@ def decompose_claims(answer: str, model: str = None) -> list[dict]:
     prompt = (
         "Break the following answer into a list of atomic factual claims. "
         "One claim per line, no bullet points. "
-        "Do not include citation references like [T1] as separate claims — "
+        "Do not include citation references like [T1] as separate claims, "
         "only extract the actual facts.\n\n"
         f"Answer: {answer}"
     )
