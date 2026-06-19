@@ -1,3 +1,6 @@
 rdflib
 requests
 tqdm
+Pillow
+python-dotenv
+gdown

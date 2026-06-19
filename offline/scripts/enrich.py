@@ -1,3 +1,8 @@
+# Stage 3 of the pipeline.
+# Turns the triples from stage 2 into the graph the frontend uses. Each node
+# gets a label, a short abstract and its types, and the long URIs are shortened
+# to dbr:/dbo:/dbp:. Writes data/kg_subset.json.
+
 import bz2
 import json
 import re
@@ -12,7 +17,7 @@ LITERAL_RE = re.compile(r'^<([^>]+)>\s+<[^>]+>\s+"(.+)"@en\s+\.')
 
 
 def load_nodes_and_edges():
-    triples = json.loads((DATA_DIR / "triples.json").read_text())
+    triples = json.loads((DATA_DIR / "triples.json").read_text(encoding="utf-8"))
     nodes = set()
     edges = []
     for t in triples:
@@ -30,9 +35,9 @@ def load_nodes_and_edges():
 
 def shorten(uri: str) -> str:
     return (uri
-        .replace("http://dbpedia.org/resource/", "dbr:")
-        .replace("http://dbpedia.org/ontology/", "dbo:")
-        .replace("http://dbpedia.org/property/", "dbp:"))
+            .replace("http://dbpedia.org/resource/", "dbr:")
+            .replace("http://dbpedia.org/ontology/", "dbo:")
+            .replace("http://dbpedia.org/property/", "dbp:"))
 
 
 def stream_literals(dump_path: Path, targets: set[str]) -> dict[str, str]:
@@ -60,8 +65,7 @@ def stream_types(dump_path: Path, targets: set[str]) -> dict[str, list[str]]:
 #   labels_en.ttl.bz2          (174M)
 #   short_abstracts_en.ttl.bz2 (503M)
 #   instance_types_en.ttl.bz2  (41M)
-# TODO: image field is always null — needs Wikipedia/MMpedia image fetch pass.
-def main() -> None:
+def run() -> None:
     print("loading triples...")
     nodes, edges = load_nodes_and_edges()
     print(f"  {len(nodes)} nodes, {len(edges)} edges")
@@ -98,10 +102,10 @@ def main() -> None:
         })
 
     out = {"nodes": node_list, "edges": edges}
-    (DATA_DIR / "kg_subset.json").write_text(json.dumps(out, indent=2))
+    (DATA_DIR / "kg_subset.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
     print(f"written: {DATA_DIR / 'kg_subset.json'}")
     print(f"  {len(node_list)} nodes, {len(edges)} edges")
 
 
 if __name__ == "__main__":
-    main()
+    run()
