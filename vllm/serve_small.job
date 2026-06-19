@@ -21,7 +21,9 @@ source $(conda info --base)/etc/profile.d/conda.sh
 
 conda activate vllm-env
 
+export HF_HOME=/scratch-shared/$USER/.cache/huggingface
+
 python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-VL-8B-Instruct \
     --port 8267 \
     --max-model-len 8192

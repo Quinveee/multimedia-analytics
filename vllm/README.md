@@ -20,13 +20,13 @@ Check the node: `squeue -u $USER`
 ## 3. SSH tunnel (local machine)
 
 ```bash
-ssh -N -L 8267:<node>:8267 scur0267@snellius.surf.nl   # small
-ssh -N -L 8268:<node>:8268 scur0267@snellius.surf.nl   # big
+ssh -N -L 8267:<node>:8267 $USER@snellius.surf.nl   # small
+ssh -N -L 8268:<node>:8268 $USER@snellius.surf.nl   # big
 ```
 
 ## Models
 
 | Job | Model | GPU mem | GPUs | Port |
 |---|---|---|---|---|
-| `serve_small.job` | `Qwen/Qwen2.5-7B-Instruct` | ~16 GB | 1 | 8267 |
-| `serve_big.job` | `Qwen/Qwen2.5-72B-Instruct` | ~160 GB | 2 | 8268 |
+| `serve_small.job` | `Qwen/Qwen3-VL-8B-Instruct` | ~18 GB | 1 | 8267 |
+| `serve_big.job` | `Qwen/Qwen3-VL-32B-Instruct` | ~64 GB | 2 | 8268 |

@@ -19,7 +19,7 @@ Check the node: `squeue -u $USER`
 ## 3. SSH tunnel (local machine)
 
 ```bash
-ssh -N -L 2223:<node>:2223 scur0267@snellius.surf.nl
+ssh -N -L 2223:<node>:2223 $USER@snellius.surf.nl
 ```
 
 ## 4. Test
