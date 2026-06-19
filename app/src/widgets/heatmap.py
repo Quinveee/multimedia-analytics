@@ -36,14 +36,14 @@ def draw_heatmap(data_selected):
                     font=dict(size=28, color="gray")
                 )
             ],
-            margin=dict(b=0, l=0, r=0, t=40)  # Adjust margins to ensure the text is visible
+            margin=dict(b=0, l=0, r=0, t=40)
         )
 
         return fig
 
-    data_selected = data_selected.sort_values('image_path')  # sort by image_path
+    data_selected = data_selected.sort_values('image_path')
     attr_data = Dataset.get_attr_data().loc[data_selected.index]
-    attr_data = attr_data.loc[:, attr_data.any()]  # filter attributes with all zeros
+    attr_data = attr_data.loc[:, attr_data.any()]
 
     image_path = data_selected['image_path'].to_list()
     image_names = [os.path.splitext(os.path.basename(item))[0] for item in image_path]
@@ -68,7 +68,6 @@ def draw_heatmap(data_selected):
             fixedrange=True
         ),
         yaxis=dict(
-            # visible=False, 
             side='left',
             automargin=False, 
             fixedrange=True, 

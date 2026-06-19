@@ -29,3 +29,12 @@ offline/data/coverage.csv
 
 # MMpedia download dir (entity2image.json 1.4 GB + Entlist*.tar 3 GB each)
 offline/mmpedia/
+
+# Slurm logs
+vllm/logs/
+spotlight/logs/
+*.out
+
+# Spotlight artifacts
+spotlight/dbpedia-spotlight.jar
+spotlight/models/
