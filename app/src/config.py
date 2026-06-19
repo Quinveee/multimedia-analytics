@@ -10,9 +10,9 @@ KG_MAX_TRIPLES = int(os.getenv("KG_MAX_TRIPLES", "30"))
 SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate")
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
-ANSWER_MODEL = os.getenv("ANSWER_MODEL", "gpt-4o-mini")
-CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", "gpt-4o-mini")
-VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", "gpt-4o-mini")
+ANSWER_MODEL = os.getenv("ANSWER_MODEL", "small")
+CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", "small")
+VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", "small")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
 # API keys — each provider reads its own env var

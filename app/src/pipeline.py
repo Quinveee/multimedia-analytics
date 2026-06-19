@@ -7,13 +7,15 @@ from src.services.spotlight import link_entities
 from src.services.verifier import verify_claims
 
 
-def run(question: str, answer_model: str = None) -> dict:
+def run(question: str, answer_model: str = None, subgraph: dict = None) -> dict:
     answer_model = answer_model or config.ANSWER_MODEL
 
     entities = link_entities(question)
     entity_uris = [e["uri"] for e in entities]
 
-    subgraph = KG.get_subgraph(entity_uris, k=config.KG_HOP)
+    if subgraph is None:
+        subgraph = KG.get_subgraph(entity_uris, k=config.KG_HOP)
+
     triples = verbalise_triples(subgraph, question, entity_uris)
 
     closed = answer_closed(question, model=answer_model)

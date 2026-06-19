@@ -27,13 +27,7 @@ class KnowledgeGraph:
         print(f"[kg] Loaded {len(self.nodes):,} nodes, {len(self.edges):,} edges.")
 
     def get_subgraph(self, entity_uris: list[str], k: int = 1) -> dict:
-        """
-        Return a k-hop subgraph reachable from the given entity URIs.
-
-        Each node in the result carries a '_depth' field — its BFS distance
-        from the nearest seed entity. Used by verbalise_triples for proximity
-        scoring: seed nodes are depth 0, their direct neighbours depth 1, etc.
-        """
+        """BFS from seed entities up to k hops. Nodes carry '_depth' for ranking later."""
         frontier = {uri for uri in entity_uris if uri in self.nodes}
 
         if not frontier:
@@ -71,21 +65,8 @@ def verbalise_triples(
     max_triples: int = None,
 ) -> str:
     """
-    Rank, cap, and format subgraph triples for use as LLM context.
-
-    Ranking combines two signals:
-    - Proximity score: k - depth + 1, where depth is the BFS distance of the
-      closest endpoint from a seed entity. Triples touching seed entities
-      directly score highest. Design choice: gradient over binary so that for
-      k > 1 hop-1 triples still outrank hop-2 triples.
-    - Predicate match score: count of non-stopword question tokens that appear
-      in the predicate label. Design choice: purely lexical (word overlap).
-      A smarter option would be embedding cosine similarity between question
-      and predicate, but that adds a sentence-transformer dependency and is
-      unnecessary for the current project scope.
-
-    After ranking, triples are capped at max_triples (default config.KG_MAX_TRIPLES),
-    grouped by subject label, and numbered sequentially as [T1], [T2], ...
+    Rank triples by proximity to seed entities + predicate overlap with the question,
+    cap at max_triples, and return them as numbered [T1], [T2], ... lines for the LLM.
     """
     if k is None:
         k = config.KG_HOP
@@ -129,8 +110,7 @@ def verbalise_triples(
 
 
 def triples_as_text(subgraph: dict) -> str:
-    """Serialize a subgraph as a flat newline-separated list (no ranking or numbering).
-    Kept for debugging; use verbalise_triples in the pipeline."""
+    """Flat serialization of a subgraph, no ranking or numbering. Useful for debugging."""
     node_label = {n["id"]: n["label"] for n in subgraph["nodes"]}
     lines = []
     for e in subgraph["edges"]:
