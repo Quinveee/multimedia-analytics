@@ -1,5 +1,7 @@
+import base64
 import os
 import re
+from pathlib import Path
 
 from src import config
 
@@ -27,6 +29,37 @@ def _get_anthropic_client():
     return _anthropic_client
 
 
+def _image_content(image_paths: list[str]) -> list[dict]:
+    """Build OpenAI-style image content blocks from file paths."""
+    blocks = []
+    for p in image_paths:
+        path = Path(p)
+        if not path.exists():
+            continue
+        ext = path.suffix.lower().lstrip(".")
+        media_type = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
+        data = base64.b64encode(path.read_bytes()).decode()
+        blocks.append({"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}})
+    return blocks
+
+
+def _to_anthropic_content(content) -> list[dict]:
+    """Convert OpenAI-style content (str or list) to Anthropic format."""
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    result = []
+    for block in content:
+        if block["type"] == "text":
+            result.append({"type": "text", "text": block["text"]})
+        elif block["type"] == "image_url":
+            url = block["image_url"]["url"]
+            # data:<media_type>;base64,<data>
+            header, data = url.split(",", 1)
+            media_type = header.split(":")[1].split(";")[0]
+            result.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
+    return result
+
+
 def _chat(messages: list[dict], model: str = None) -> str:
     if MOCK:
         return "[MOCK] This is a dummy LLM response."
@@ -36,10 +69,13 @@ def _chat(messages: list[dict], model: str = None) -> str:
 
     if provider == "anthropic":
         system = next((m["content"] for m in messages if m["role"] == "system"), None)
-        user_messages = [m for m in messages if m["role"] != "system"]
+        user_messages = [
+            {**m, "content": _to_anthropic_content(m["content"])}
+            for m in messages if m["role"] != "system"
+        ]
         kwargs = {"model": model_name, "max_tokens": 1024, "messages": user_messages}
         if system:
-            kwargs["system"] = system
+            kwargs["system"] = system if isinstance(system, str) else system[0]["text"]
         resp = _get_anthropic_client().messages.create(**kwargs)
         return resp.content[0].text.strip()
 
@@ -65,7 +101,7 @@ def answer_closed(question: str, model: str = None) -> str:
     )
 
 
-def answer_grounded(question: str, triples: str, model: str = None) -> str:
+def answer_grounded(question: str, triples: str, model: str = None, image_paths: list[str] = None) -> str:
     system = (
         "You are given a set of knowledge graph facts.\n"
         "Answer the question using ONLY the facts provided below. "
@@ -74,10 +110,16 @@ def answer_grounded(question: str, triples: str, model: str = None) -> str:
         'respond with: "The provided facts do not contain enough information to answer this question."\n\n'
         f"Facts:\n{triples}"
     )
+    image_blocks = _image_content(image_paths) if image_paths else []
+    user_content = (
+        [{"type": "text", "text": question}] + image_blocks
+        if image_blocks
+        else question
+    )
     return _chat(
         [
             {"role": "system", "content": system},
-            {"role": "user", "content": question},
+            {"role": "user", "content": user_content},
         ],
         model=model,
     )

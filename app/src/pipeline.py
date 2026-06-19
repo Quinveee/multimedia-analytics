@@ -18,10 +18,18 @@ def run(question: str, answer_model: str = None, subgraph: dict = None) -> dict:
 
     triples = verbalise_triples(subgraph, question, entity_uris)
 
-    # TODO: add entity images to llm for multimodality
+    kg_dir = config.KG_PATH.parent
+    image_paths = [
+        str(kg_dir / n["image"])
+        for n in subgraph["nodes"]
+        if n.get("image") and n["id"] in entity_uris
+    ]
+
     closed = answer_closed(question, model=answer_model)
     grounded = (
-        answer_grounded(question, triples, model=answer_model) if triples else closed
+        answer_grounded(question, triples, model=answer_model, image_paths=image_paths or None)
+        if triples
+        else closed
     )
 
     claims_grounded = verify_claims(parse_claims(grounded), triples)

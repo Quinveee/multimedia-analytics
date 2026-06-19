@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 # ── KG ────────────────────────────────────────────────────────────────────────
-KG_PATH = Path(os.getenv("KG_PATH", "../offline/mock_kg.json"))
+KG_PATH = Path(os.getenv("KG_PATH", "../offline/data/kg_subset.db"))
 KG_HOP = int(os.getenv("KG_HOP", "1"))
 KG_MAX_TRIPLES = int(os.getenv("KG_MAX_TRIPLES", "30"))
 
@@ -11,8 +11,8 @@ SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate"
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 ANSWER_MODEL = os.getenv("ANSWER_MODEL", "small")
-CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", "small")
-VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", "small")
+CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", "big")
+VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", "big")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
 # API keys — each provider reads its own env var

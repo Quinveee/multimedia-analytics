@@ -1,5 +1,6 @@
 import json
 import re
+import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
@@ -10,25 +11,25 @@ _STOPWORDS = set(_STOPWORDS_FILE.read_text().split(","))
 
 
 class KnowledgeGraph:
-    """
-    KG loaded once at startup with an adjacency index for fast k-hop traversal.
-    """
+    """SQLite-backed KG. Queries on demand — never loads the full graph into memory."""
 
     def __init__(self, path: Path = None):
         path = Path(path or config.KG_PATH)
-        print(f"[kg] Loading KG from {path} ...")
-        data = json.loads(path.read_text())
-        self.nodes: dict[str, dict] = {n["id"]: n for n in data["nodes"]}
-        self.edges: list[dict] = data["edges"]
-        self._adj: dict[str, list[dict]] = defaultdict(list)
-        for e in self.edges:
-            self._adj[e["subject"]].append(e)
-            self._adj[e["object"]].append(e)
-        print(f"[kg] Loaded {len(self.nodes):,} nodes, {len(self.edges):,} edges.")
+        print(f"[kg] Connecting to KG at {path} ...")
+        self.con = sqlite3.connect(str(path), check_same_thread=False)
+        cur = self.con.execute("SELECT COUNT(*) FROM nodes")
+        n_nodes = cur.fetchone()[0]
+        cur = self.con.execute("SELECT COUNT(*) FROM edges")
+        n_edges = cur.fetchone()[0]
+        print(f"[kg] {n_nodes:,} nodes, {n_edges:,} edges.")
 
     def get_subgraph(self, entity_uris: list[str], k: int = 1) -> dict:
         """BFS from seed entities up to k hops. Nodes carry '_depth' for ranking later."""
-        frontier = {uri for uri in entity_uris if uri in self.nodes}
+        cur = self.con.execute(
+            f"SELECT id FROM nodes WHERE id IN ({','.join('?' * len(entity_uris))})",
+            entity_uris,
+        )
+        frontier = {row[0] for row in cur.fetchall()}
 
         if not frontier:
             return {"nodes": [], "edges": []}
@@ -36,24 +37,51 @@ class KnowledgeGraph:
         depth: dict[str, int] = {uri: 0 for uri in frontier}
         visited_nodes = set(frontier)
         collected_edges: list[dict] = []
-        seen_edges: set[int] = set()
+        seen_rowids: set[int] = set()
 
         for hop in range(k):
-            next_frontier = set()
-            for node_id in frontier:
-                for e in self._adj[node_id]:
-                    eid = id(e)
-                    if eid not in seen_edges:
-                        seen_edges.add(eid)
-                        collected_edges.append(e)
-                    neighbor = e["object"] if e["subject"] == node_id else e["subject"]
+            if not frontier:
+                break
+            fl = list(frontier)
+            ph = ",".join("?" * len(fl))
+            cur = self.con.execute(
+                f"SELECT rowid, subject, predicate, object, predicate_label FROM edges "
+                f"WHERE subject IN ({ph}) OR object IN ({ph})",
+                fl + fl,
+            )
+            next_frontier: set[str] = set()
+            for rowid, subj, pred, obj, pred_label in cur.fetchall():
+                if rowid not in seen_rowids:
+                    seen_rowids.add(rowid)
+                    collected_edges.append({
+                        "subject": subj,
+                        "predicate": pred,
+                        "object": obj,
+                        "predicate_label": pred_label,
+                    })
+                for neighbor in (subj, obj):
                     if neighbor not in visited_nodes:
                         next_frontier.add(neighbor)
                         depth[neighbor] = hop + 1
             visited_nodes |= next_frontier
             frontier = next_frontier
 
-        nodes = [{**self.nodes[nid], "_depth": depth[nid]} for nid in visited_nodes]
+        vl = list(visited_nodes)
+        cur = self.con.execute(
+            f"SELECT id, label, types, image FROM nodes WHERE id IN ({','.join('?' * len(vl))})",
+            vl,
+        )
+        nodes = [
+            {
+                "id": row[0],
+                "label": row[1] or row[0],
+                "types": json.loads(row[2]) if row[2] else [],
+                "image": row[3],
+                "_depth": depth.get(row[0], k),
+            }
+            for row in cur.fetchall()
+        ]
+
         return {"nodes": nodes, "edges": collected_edges}
 
 
@@ -89,7 +117,6 @@ def verbalise_triples(
 
     ranked = sorted(subgraph["edges"], key=score, reverse=True)[:max_triples]
 
-    # group by subject label, preserving rank order within each group
     groups: dict[str, list[dict]] = defaultdict(list)
     seen_subjects: list[str] = []
     for e in ranked:
@@ -121,5 +148,4 @@ def triples_as_text(subgraph: dict) -> str:
     return "\n".join(lines)
 
 
-# singleton loaded at import time
 KG = KnowledgeGraph()
