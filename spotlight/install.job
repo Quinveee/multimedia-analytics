@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --partition=rome
+#SBATCH --job-name=spotlight-install
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=01:00:00
+#SBATCH --output=spotlight/logs/install_%j.out
+
+set -e
+
+mkdir -p spotlight/logs
+mkdir -p spotlight/models
+
+JAR=spotlight/dbpedia-spotlight.jar
+MODEL_DIR=spotlight/models/en
+
+if [ ! -f "$JAR" ]; then
+    wget -O $JAR https://sourceforge.net/projects/spotlight-multilingual-docker/files/dbpedia-spotlight-1.1.jar
+fi
+
+if [ ! -d "$MODEL_DIR" ]; then
+    wget -O /tmp/spotlight-model-en.tar.gz \
+        https://downloads.dbpedia.org/repo/dbpedia/spotlight/spotlight-model/2022.03.01/spotlight-model_lang=en.tar.gz
+    tar -C spotlight/models -xzf /tmp/spotlight-model-en.tar.gz
+    rm /tmp/spotlight-model-en.tar.gz
+fi
+
+echo "Done."

@@ -1,5 +1,5 @@
-plotly==5.20.0
-dash==2.16.1
+plotly
+dash
 git+https://github.com/openai/CLIP.git
 dash-bootstrap-components
 pandas
@@ -12,10 +12,14 @@ scikit-learn
 wget
 dash-holoniq-wordcloud
 openai
+anthropic
+requests
 torch
 torchvision
 diffusers
 transformers
+sentence-transformers
 accelerate
 pillow
 safetensors
+dash_cytoscape
