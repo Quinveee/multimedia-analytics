@@ -22,9 +22,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "dummy")
 
 # vLLM endpoints on Snellius
 LLM_SMALL_URL = os.getenv("LLM_SMALL_URL", "http://localhost:8267/v1")
-LLM_SMALL_MODEL = os.getenv("LLM_SMALL_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+LLM_SMALL_MODEL = os.getenv("LLM_SMALL_MODEL", "Qwen/Qwen3-VL-8B-Instruct")
 LLM_BIG_URL = os.getenv("LLM_BIG_URL", "http://localhost:8268/v1")
-LLM_BIG_MODEL = os.getenv("LLM_BIG_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+LLM_BIG_MODEL = os.getenv("LLM_BIG_MODEL", "Qwen/Qwen3-VL-32B-Instruct")
 
 
 def resolve_llm(model: str) -> tuple[str, str, str, str]:
