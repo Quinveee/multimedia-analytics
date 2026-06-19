@@ -11,6 +11,21 @@ venv/
 .DS_Store
 .cache/
 
+# archives
+*.bz2
+
+# Generated pipeline artifacts (large; regenerate via offline/main.py).
+# uris.json is small and kept tracked as a reference.
+offline/data/triples.json
+offline/data/kg_subset.json
+offline/data/kg_subset.db
+offline/data/validated_questions.json
+offline/data/images/
+offline/data/coverage.csv
+
+# MMpedia download dir (entity2image.json 1.4 GB + Entlist*.tar 3 GB each)
+offline/mmpedia/
+
 # Slurm logs
 vllm/logs/
 spotlight/logs/

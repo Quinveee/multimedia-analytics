@@ -16,6 +16,9 @@ def _get_nli():
 
 
 def _verify_llm(claim: str, triples: str) -> str:
+    """
+    Classify a claim against triple text using an LLM. Returns supported/inferred/unverifiable.
+    """
     prompt = (
         f"Given these knowledge graph triples:\n{triples}\n\n"
         f"Classify the following claim as one of: supported, inferred, unverifiable.\n"
@@ -36,6 +39,9 @@ def _verify_llm(claim: str, triples: str) -> str:
 
 
 def _verify_nli(claim: str, cited_triple_texts: list[str]) -> str:
+    """
+    Classify a claim against triples using a cross-encoder NLI model. Returns supported/inferred/unverifiable.
+    """
     model = _get_nli()
     pairs = [(triple, claim) for triple in cited_triple_texts]
     scores = model.predict(pairs)
@@ -47,7 +53,15 @@ def _verify_nli(claim: str, cited_triple_texts: list[str]) -> str:
     return "unverifiable"
 
 
-def verify_claims(claims: list[dict], triples: str, verify_uncited: bool = False) -> list[dict]:
+def verify_claims(
+    claims: list[dict], triples: str, verify_uncited: bool = False
+) -> list[dict]:
+    """
+    Verify each claim against its cited triples.
+
+    verify_uncited=True: claims with no citations are verified against all triples (used for closed-book).
+    verify_uncited=False: claims with no citations are marked unverifiable (used for grounded).
+    """
     triple_lines = [t for t in triples.splitlines() if t.strip()]
     results = []
     for c in claims:

@@ -1,17 +1,16 @@
-from src import config
 import requests
+
+from src import config
 
 _SPOTLIGHT_URL = config.SPOTLIGHT_URL
 
 
 def link_entities(question: str) -> list[dict]:
-    """Call DBpedia Spotlight to extract entities from a question.
+    """
+    Call DBpedia Spotlight to link entities in the question.
 
-    Returns a list of dicts, e.g.:
-    [{"uri": "dbr:Marie_Curie", "surface_form": "Marie Curie", "start": 7, "end": 18}]
-
-    start/end are character offsets into the original question string, ready for frontend
-    highlighting. Spotlight only gives @offset (start); end is derived as start + len(surface_form).
+    Returns list of dicts with uri (dbr: prefix), surface_form, and start/end char offsets.
+    end is derived as start + len(surface_form) since Spotlight only returns @offset.
 
     Example Spotlight resource entry:
     {

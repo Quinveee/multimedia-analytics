@@ -15,7 +15,7 @@ CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", "big")
 VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", "big")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
-# API keys — each provider reads its own env var
+# API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "dummy")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "dummy")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "dummy")
@@ -28,7 +28,9 @@ LLM_BIG_MODEL = os.getenv("LLM_BIG_MODEL", "Qwen/Qwen3-VL-32B-Instruct")
 
 
 def resolve_llm(model: str) -> tuple[str, str, str, str]:
-    """Return (provider, base_url, api_key, model_name) from a model identifier."""
+    """
+    Return (provider, base_url, api_key, model_name) from a model identifier.
+    """
     m = model.lower()
     if m == "small":
         return "vllm", LLM_SMALL_URL, "dummy", LLM_SMALL_MODEL

@@ -30,21 +30,36 @@ def _get_anthropic_client():
 
 
 def _image_content(image_paths: list[str]) -> list[dict]:
-    """Build OpenAI-style image content blocks from file paths."""
+    """
+    Build OpenAI-style image content blocks from file paths.
+    """
     blocks = []
     for p in image_paths:
         path = Path(p)
         if not path.exists():
+            print(f"[llm] image not found: {path}")
             continue
         ext = path.suffix.lower().lstrip(".")
-        media_type = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
+        media_type = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "webp": "image/webp",
+        }.get(ext, "image/jpeg")
         data = base64.b64encode(path.read_bytes()).decode()
-        blocks.append({"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}})
+        blocks.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{media_type};base64,{data}"},
+            }
+        )
     return blocks
 
 
 def _to_anthropic_content(content) -> list[dict]:
-    """Convert OpenAI-style content (str or list) to Anthropic format."""
+    """
+    Convert OpenAI-style content (str or list) to Anthropic format.
+    """
     if isinstance(content, str):
         return [{"type": "text", "text": content}]
     result = []
@@ -56,7 +71,16 @@ def _to_anthropic_content(content) -> list[dict]:
             # data:<media_type>;base64,<data>
             header, data = url.split(",", 1)
             media_type = header.split(":")[1].split(";")[0]
-            result.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
+            result.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": data,
+                    },
+                }
+            )
     return result
 
 
@@ -71,7 +95,8 @@ def _chat(messages: list[dict], model: str = None) -> str:
         system = next((m["content"] for m in messages if m["role"] == "system"), None)
         user_messages = [
             {**m, "content": _to_anthropic_content(m["content"])}
-            for m in messages if m["role"] != "system"
+            for m in messages
+            if m["role"] != "system"
         ]
         kwargs = {"model": model_name, "max_tokens": 1024, "messages": user_messages}
         if system:
@@ -93,7 +118,7 @@ def answer_closed(question: str, model: str = None) -> str:
         [
             {
                 "role": "system",
-                "content": "Answer the question based on your knowledge.",
+                "content": "Answer the question in a single short paragraph based on your knowledge. Do not use bullet points, lists, or headers.",
             },
             {"role": "user", "content": question},
         ],
@@ -101,13 +126,18 @@ def answer_closed(question: str, model: str = None) -> str:
     )
 
 
-def answer_grounded(question: str, triples: str, model: str = None, image_paths: list[str] = None) -> str:
+def answer_grounded(
+    question: str, triples: str, model: str = None, image_paths: list[str] = None
+) -> str:
     system = (
-        "You are given a set of knowledge graph facts.\n"
-        "Answer the question using ONLY the facts provided below. "
-        "Cite each fact you use as [T1], [T2], etc.\n"
-        "If the facts do not contain enough information to answer the question, "
-        'respond with: "The provided facts do not contain enough information to answer this question."\n\n'
+        "Answer the question as a paragraph using ONLY the knowledge graph facts below. "
+        "Each sentence must state exactly one fact and end with its citation. "
+        "Do not use bullet points or lists. "
+        "Do not combine multiple facts into one sentence.\n\n"
+        "Correct: 'Marie Curie was born in Warsaw. [T1] She died from aplastic anemia. [T5]'\n"
+        "Wrong: 'Marie Curie was born in Warsaw and died from aplastic anemia. [T1][T5]'\n\n"
+        "If the facts contain no relevant information, respond only with: "
+        '"The provided facts do not contain enough information to answer this question."\n\n'
         f"Facts:\n{triples}"
     )
     image_blocks = _image_content(image_paths) if image_paths else []
@@ -126,7 +156,8 @@ def answer_grounded(question: str, triples: str, model: str = None, image_paths:
 
 
 def parse_claims(answer: str) -> list[dict]:
-    """Parse [T#] citations from a grounded answer into one claim per citation.
+    """
+    Parse [T#] citations from a grounded answer into one claim per citation.
 
     Boundaries are: start of text, after a period, or after a previous [T#].
     The text between the last boundary and a [T#] becomes one claim citing that triple.
@@ -175,7 +206,9 @@ def parse_claims(answer: str) -> list[dict]:
 
 
 def parse_sentences(answer: str) -> list[dict]:
-    """Split answer into sentences for closed-book claim verification."""
+    """
+    Split answer into sentences for closed-book claim verification.
+    """
     parts = re.split(r"(?<=[.!?])\s+", answer.strip())
     result = []
     cursor = 0
@@ -185,18 +218,22 @@ def parse_sentences(answer: str) -> list[dict]:
             continue
         idx = answer.find(sentence, cursor)
         if idx != -1:
-            result.append({
-                "claim": sentence,
-                "cited_triples": [],
-                "start": idx,
-                "end": idx + len(sentence),
-            })
+            result.append(
+                {
+                    "claim": sentence,
+                    "cited_triples": [],
+                    "start": idx,
+                    "end": idx + len(sentence),
+                }
+            )
             cursor = idx + len(sentence)
     return result
 
 
 def decompose_claims(answer: str, model: str = None) -> list[dict]:
-    """Obsolete — use parse_claims instead."""
+    """
+    Obsolete (use parse_claims instead).
+    """
     prompt = (
         "Break the following answer into a list of atomic factual claims. "
         "One claim per line, no bullet points. "
