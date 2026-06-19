@@ -3,7 +3,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-import config
+from src import config
 
 _STOPWORDS_FILE = Path(__file__).parent.parent / "stopwords.txt"
 _STOPWORDS = set(_STOPWORDS_FILE.read_text().split(","))

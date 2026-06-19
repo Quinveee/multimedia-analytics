@@ -1,4 +1,4 @@
-import config
+from src import config
 import requests
 
 _SPOTLIGHT_URL = config.SPOTLIGHT_URL

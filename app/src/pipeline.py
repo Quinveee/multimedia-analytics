@@ -1,10 +1,10 @@
 import argparse
 
-import config
-from services.kg import KG, verbalise_triples
-from services.llm import answer_closed, answer_grounded, parse_claims
-from services.spotlight import link_entities
-from services.verifier import verify_claims
+from src import config
+from src.services.kg import KG, verbalise_triples
+from src.services.llm import answer_closed, answer_grounded, parse_claims
+from src.services.spotlight import link_entities
+from src.services.verifier import verify_claims
 
 
 def run(question: str, answer_model: str = None) -> dict:

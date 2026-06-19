@@ -1,7 +1,7 @@
 import os
 import re
 
-import config
+from src import config
 
 MOCK = os.getenv("MOCK", "false").lower() == "true"
 

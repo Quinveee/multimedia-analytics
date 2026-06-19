@@ -1,5 +1,5 @@
-import config
-from services.llm import _chat
+from src import config
+from src.services.llm import _chat
 
 _nli_model = None
 
