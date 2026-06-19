@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tarfile
+import gdown
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
@@ -27,6 +28,15 @@ IMAGES_OUT = DATA_DIR / "images"
 ENTITY2IMAGE = "entity2image.json"
 
 ZENODO_BASE = "https://zenodo.org/records/7816711/files/"
+# The 131 image tars are split (out of order) across these 4 Zenodo records;
+# together they hold Entlist001..150. Zenodo has no per-file download quota, so
+# it's the primary source. Google Drive is a fallback (it throttles).
+ZENODO_RECORDS = ["7816711", "7854781", "7855010", "7855226"]
+ZENODO_MANIFEST = "zenodo_manifest.json"
+GDRIVE_FOLDER = os.environ.get(
+    "MMPEDIA_GDRIVE_FOLDER",
+    "https://drive.google.com/drive/folders/13GFHEfKMw9rAR0IvLB46L39UF5fYN9FY")
+DRIVE_MANIFEST = "drive_manifest.json"
 THUMB_SIZE = 256
 
 # Set MMPEDIA_AUTO_DOWNLOAD=1 to allow fetching entity2image.json + needed tars.
@@ -128,15 +138,80 @@ def load_entity_images(mmpedia_dir: Path, auto_download: bool) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _ensure_archive(archive: str, mmpedia_dir: Path, auto_download: bool) -> Path | None:
+def _zenodo_manifest(mmpedia_dir: Path) -> dict:
+    """archive name -> Zenodo record id. The 4 records together hold all 131 tars
+    (out of order); cached to mmpedia/zenodo_manifest.json."""
+    path = mmpedia_dir / ZENODO_MANIFEST
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    manifest: dict = {}
+    for rec in ZENODO_RECORDS:
+        r = requests.get(f"https://zenodo.org/api/records/{rec}", timeout=60)
+        r.raise_for_status()
+        for f in r.json().get("files", []):
+            if f.get("key", "").endswith(".tar"):
+                manifest.setdefault(f["key"], rec)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"  zenodo manifest: {len(manifest)} archives across {len(ZENODO_RECORDS)} records")
+    return manifest
+
+
+def _drive_manifest(mmpedia_dir: Path, folder_url: str) -> dict:
+    """archive name -> Google Drive file id, enumerated once from the MMpedia
+    folder and cached to mmpedia/drive_manifest.json."""
+    path = mmpedia_dir / DRIVE_MANIFEST
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    print("  enumerating Google Drive folder for archive ids...")
+    files = gdown.download_folder(url=folder_url, skip_download=True, quiet=True)
+    manifest = {Path(f.path).name: f.id for f in (files or [])
+                if Path(f.path).name.endswith(".tar")}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"  drive manifest: {len(manifest)} archives -> {path}")
+    return manifest
+
+
+def _download_gdrive(file_id: str, dest: Path) -> None:
+    tmp = dest.with_name(dest.name + ".part")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    gdown.download(id=file_id, output=str(tmp), quiet=False, resume=True)
+    tmp.replace(dest)
+
+
+def _ensure_archive(archive: str, mmpedia_dir: Path, zenodo_map: dict) -> Path | None:
+    """Local tar if present, else Zenodo (no download quota) then Google Drive
+    fallback. Non-fatal: any failure warns and returns None, so one bad archive
+    can't crash the whole run."""
     path = mmpedia_dir / archive
     if path.exists():
         return path
-    if not auto_download:
-        return None
-    print(f"  downloading {archive} (~3 GB)...")
-    _download(f"{ZENODO_BASE}{archive}?download=1", path)
-    return path
+    part = mmpedia_dir / (archive + ".part")
+
+    rec = zenodo_map.get(archive)
+    if rec:
+        try:
+            print(f"  downloading {archive} from Zenodo record {rec}...")
+            _download(f"https://zenodo.org/records/{rec}/files/{archive}?download=1", path)
+            return path
+        except Exception as exc:
+            print(f"  WARN Zenodo {archive}: {exc}")
+            part.unlink(missing_ok=True)
+
+    try:
+        file_id = _drive_manifest(mmpedia_dir, GDRIVE_FOLDER).get(archive)
+        if file_id:
+            print(f"  downloading {archive} from Google Drive (~3 GB)...")
+            _download_gdrive(file_id, path)
+            return path
+    except Exception as exc:
+        print(f"  WARN Google Drive {archive}: {exc}")
+        part.unlink(missing_ok=True)
+
+    print(f"  {archive}: not available from Zenodo or Drive - skipping")
+    return None
 
 
 def _archive_rel(rel: str) -> str:
@@ -192,11 +267,16 @@ def fetch_thumbnails(matched: dict, mmpedia_dir: Path, images_out: Path,
         else:
             bar.update(1)
 
+    zenodo_map: dict = {}
+    if by_archive and auto_download:
+        try:
+            zenodo_map = _zenodo_manifest(mmpedia_dir)
+        except Exception as exc:
+            print(f"  WARN Zenodo record listing failed: {exc}")
+
     for archive, entries in sorted(by_archive.items()):
-        tar_path = _ensure_archive(archive, mmpedia_dir, auto_download)
+        tar_path = _ensure_archive(archive, mmpedia_dir, zenodo_map)
         if tar_path is None:
-            print(f"  {archive} not present (set MMPEDIA_AUTO_DOWNLOAD=1) - "
-                  f"{len(entries)} entities skipped")
             bar.update(len(entries))
             continue
         with tarfile.open(tar_path) as tar:

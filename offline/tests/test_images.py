@@ -12,9 +12,9 @@ from pathlib import Path
 from PIL import Image
 
 import scripts.images as images
-from scripts.images import (_archive_rel, archive_of, fetch_thumbnails,
-                            load_focus_entities, match_entities, node_key, run,
-                            slug, thumbnail)
+from scripts.images import (_archive_rel, _ensure_archive, archive_of,
+                            fetch_thumbnails, load_focus_entities, match_entities,
+                            node_key, run, slug, thumbnail)
 
 
 def _make_png(path: Path, size=(800, 600)) -> None:
@@ -136,6 +136,52 @@ class TestFetchThumbnails(unittest.TestCase):
             thumbs = fetch_thumbnails(
                 {"dbr:X": ["Entlist003/X/X+1.jpg"]}, mm, Path(d) / "images", auto_download=False)
             self.assertEqual(thumbs, {})
+
+
+class TestEnsureArchive(unittest.TestCase):
+    def setUp(self):
+        self._dl, self._dm = images._download, images._drive_manifest
+        images._drive_manifest = lambda *a, **k: {}  # no Drive fallback / no network
+
+    def tearDown(self):
+        images._download, images._drive_manifest = self._dl, self._dm
+
+    def test_local_archive_used_without_download(self):
+        with tempfile.TemporaryDirectory() as d:
+            mm = Path(d) / "mmpedia"
+            mm.mkdir(parents=True)
+            (mm / "Entlist005.tar").write_text("x")
+            self.assertEqual(_ensure_archive("Entlist005.tar", mm, {}),
+                             mm / "Entlist005.tar")
+
+    def test_zenodo_download_uses_mapped_record(self):
+        def fake(url, dest):
+            self.assertIn("zenodo.org/records/7855010/files/Entlist096.tar", url)
+            dest.write_text("tar")
+        images._download = fake
+        with tempfile.TemporaryDirectory() as d:
+            mm = Path(d) / "mmpedia"
+            mm.mkdir(parents=True)
+            self.assertEqual(
+                _ensure_archive("Entlist096.tar", mm, {"Entlist096.tar": "7855010"}),
+                mm / "Entlist096.tar")
+
+    def test_no_source_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            mm = Path(d) / "mmpedia"
+            mm.mkdir(parents=True)
+            self.assertIsNone(_ensure_archive("Entlist017.tar", mm, {}))
+
+    def test_zenodo_failure_is_non_fatal(self):
+        def boom(url, dest):
+            raise RuntimeError("HTTP 503 — throttled")  # must skip, not raise
+        images._download = boom
+        with tempfile.TemporaryDirectory() as d:
+            mm = Path(d) / "mmpedia"
+            mm.mkdir(parents=True)
+            self.assertIsNone(
+                _ensure_archive("Entlist096.tar", mm, {"Entlist096.tar": "7855010"}))
+            self.assertFalse((mm / "Entlist096.tar.part").exists())
 
 
 class TestRun(unittest.TestCase):
