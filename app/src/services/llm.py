@@ -132,6 +132,27 @@ def parse_claims(answer: str) -> list[dict]:
     return result
 
 
+def parse_sentences(answer: str) -> list[dict]:
+    """Split answer into sentences for closed-book claim verification."""
+    parts = re.split(r"(?<=[.!?])\s+", answer.strip())
+    result = []
+    cursor = 0
+    for part in parts:
+        sentence = part.strip()
+        if not sentence:
+            continue
+        idx = answer.find(sentence, cursor)
+        if idx != -1:
+            result.append({
+                "claim": sentence,
+                "cited_triples": [],
+                "start": idx,
+                "end": idx + len(sentence),
+            })
+            cursor = idx + len(sentence)
+    return result
+
+
 def decompose_claims(answer: str, model: str = None) -> list[dict]:
     """Obsolete — use parse_claims instead."""
     prompt = (

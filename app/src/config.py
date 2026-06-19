@@ -53,8 +53,8 @@ NLI_MODEL = os.getenv("NLI_MODEL", "cross-encoder/nli-deberta-v3-base")
 # ── Mock ──────────────────────────────────────────────────────────────────────
 MOCK = os.getenv("MOCK", "false").lower() == "true"
 
-# ── ui configuration ──────────────────────────────────────────────────────────
-# ui configuration
+# ── UI Configuration ──────────────────────────────────────────────────────────
+# UI configuration
 IMAGE_GALLERY_SIZE = 24
 IMAGE_GALLERY_ROW_SIZE = 4
 

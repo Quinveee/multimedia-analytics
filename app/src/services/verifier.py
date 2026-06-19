@@ -47,20 +47,24 @@ def _verify_nli(claim: str, cited_triple_texts: list[str]) -> str:
     return "unverifiable"
 
 
-def verify_claims(claims: list[dict], triples: str) -> list[dict]:
+def verify_claims(claims: list[dict], triples: str, verify_uncited: bool = False) -> list[dict]:
     triple_lines = [t for t in triples.splitlines() if t.strip()]
     results = []
     for c in claims:
         cited = c.get("cited_triples", [])
         if not cited:
-            label = "unverifiable"
+            if verify_uncited and triple_lines:
+                cited_texts = triple_lines
+            else:
+                results.append({**c, "label": "unverifiable"})
+                continue
         else:
             cited_texts = [
                 triple_lines[i - 1] for i in cited if 0 < i <= len(triple_lines)
             ]
-            if config.VERIFIER == "nli":
-                label = _verify_nli(c["claim"], cited_texts)
-            else:
-                label = _verify_llm(c["claim"], "\n".join(cited_texts))
+        if config.VERIFIER == "nli":
+            label = _verify_nli(c["claim"], cited_texts)
+        else:
+            label = _verify_llm(c["claim"], "\n".join(cited_texts))
         results.append({**c, "label": label})
     return results

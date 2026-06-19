@@ -2,7 +2,7 @@ import argparse
 
 from src import config
 from src.services.kg import KG, verbalise_triples
-from src.services.llm import answer_closed, answer_grounded, parse_claims
+from src.services.llm import answer_closed, answer_grounded, parse_claims, parse_sentences
 from src.services.spotlight import link_entities
 from src.services.verifier import verify_claims
 
@@ -18,13 +18,14 @@ def run(question: str, answer_model: str = None, subgraph: dict = None) -> dict:
 
     triples = verbalise_triples(subgraph, question, entity_uris)
 
+    # TODO: add entity images to llm for multimodality
     closed = answer_closed(question, model=answer_model)
     grounded = (
         answer_grounded(question, triples, model=answer_model) if triples else closed
     )
 
-    claims = parse_claims(grounded)
-    verified = verify_claims(claims, triples)
+    claims_grounded = verify_claims(parse_claims(grounded), triples)
+    claims_closed = verify_claims(parse_sentences(closed), triples, verify_uncited=True)
 
     return {
         "question": question,
@@ -34,7 +35,8 @@ def run(question: str, answer_model: str = None, subgraph: dict = None) -> dict:
         "triples": triples,
         "answer_closed": closed,
         "answer_grounded": grounded,
-        "claims": verified,
+        "claims_grounded": claims_grounded,
+        "claims_closed": claims_closed,
     }
 
 
@@ -64,8 +66,8 @@ if __name__ == "__main__":
     print("\n=== GROUNDED ANSWER ===")
     print(result["answer_grounded"])
 
-    print("\n=== CLAIMS ===")
-    for c in result["claims"]:
+    print("\n=== CLAIMS (grounded) ===")
+    for c in result["claims_grounded"]:
         span = (
             f"  span=({c['start']}, {c['end']})"
             if c["start"] is not None
