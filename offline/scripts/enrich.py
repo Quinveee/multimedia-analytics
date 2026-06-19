@@ -1,3 +1,8 @@
+# Stage 3 of the pipeline.
+# Turns the triples from stage 2 into the graph the frontend uses. Each node
+# gets a label, a short abstract and its types, and the long URIs are shortened
+# to dbr:/dbo:/dbp:. Writes data/kg_subset.json.
+
 import bz2
 import json
 import re

@@ -1,17 +1,17 @@
-"""Offline pipeline orchestrator.
-
-Runs the full preprocessing pipeline end to end:
-
-  1. extract_uris   — seeds & predicates from each gold SPARQL  -> data/uris.json
-  2. neighbourhood  — bidirectional hop-1 over the dumps        -> data/triples.json
-  3. enrich         — labels/abstracts/types + shortened graph  -> data/kg_subset.json
-  4. validate       — re-run gold queries, keep non-empty       -> data/validated_questions.json
-
-Before running, it verifies the DBpedia 2016-04 dump archives are present in
-dumps/ and downloads any that are missing. Each phase is logged with timing.
-
-Usage (from offline/):  python main.py
-"""
+# Runs the whole pipeline from start to finish, one stage after another, and
+# prints how long each one takes. Before it starts it checks the dumps/ folder
+# for the DBpedia files it needs and downloads any that are missing.
+#
+# Order the stages run in:
+#   extract_uris    read the gold queries           -> data/uris.json
+#   neighbourhood   build the one hop graph         -> data/triples.json
+#   enrich          add labels, abstracts, types    -> data/kg_subset.json
+#   validate        keep questions that still work  -> data/validated_questions.json
+#   clean_graph     drop noisy edges and nodes         (edits kg_subset.json)
+#   images          attach MMpedia thumbnails       -> data/images + coverage.csv
+#   to_sqlite       build the queryable database    -> data/kg_subset.db
+#
+# Run it from the offline folder: python main.py
 import importlib
 import logging
 import sys
@@ -40,7 +40,9 @@ STAGES = [
     ("neighbourhood", "build bidirectional hop-1 neighbourhood"),
     ("enrich", "enrich nodes (labels / abstracts / types)"),
     ("validate", "validate against gold queries"),
+    ("clean_graph", "prune infobox noise + dangling/isolated nodes"),
     ("images", "attach MMpedia thumbnails + coverage.csv"),
+    ("to_sqlite", "build queryable kg_subset.db"),
 ]
 
 log = logging.getLogger("pipeline")

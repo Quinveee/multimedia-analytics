@@ -1,3 +1,8 @@
+# Stage 1 of the pipeline.
+# Goes through every gold SPARQL query and pulls out the DBpedia entities and
+# predicates it uses. The entities become the seeds we build the graph around.
+# Writes data/uris.json.
+
 import json
 import re
 from pathlib import Path

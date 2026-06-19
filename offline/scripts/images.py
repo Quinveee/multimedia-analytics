@@ -1,3 +1,10 @@
+# Stage 5 of the pipeline.
+# Adds a picture to the nodes that have one in MMpedia. To avoid downloading all
+# of MMpedia it only fetches images for the entities that appear in the validated
+# questions, grabs just the archives it needs, makes 256px thumbnails and fills
+# node.image. It also writes data/coverage.csv saying which nodes have an image.
+# Set MMPEDIA_AUTO_DOWNLOAD=1 to let it actually download.
+
 import csv
 import io
 import json

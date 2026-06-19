@@ -1,3 +1,10 @@
+# Stage 4 of the pipeline.
+# Runs each gold query again, this time against the triples we collected, and
+# keeps only the questions that still have an answer in our subset. For every
+# kept question it also saves the triples that answer it (the evidence). The
+# matching uses a small hand written join because rdflib's own SPARQL engine
+# was far too slow on millions of triples. Writes data/validated_questions.json.
+
 import bz2
 import json
 import re

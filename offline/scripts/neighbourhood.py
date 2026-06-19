@@ -1,3 +1,8 @@
+# Stage 2 of the pipeline.
+# Reads the big DBpedia relation dumps and keeps a triple whenever one of our
+# seed entities is the subject or the object, so we also grab the answer
+# entities around each seed (one hop out). Writes data/triples.json.
+
 import bz2
 import json
 import re
