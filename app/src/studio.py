@@ -541,7 +541,7 @@ HERO = html.Div([html.Div([
            style={"fontSize": "15px", "color": "#868e96", "margin": "0 0 28px", "lineHeight": "1.55", "maxWidth": "470px"}),
     html.Div([
         icon(SEARCH_GLYPH, 18, "#adb5bd", 2, style={"display": "inline-block"}),
-        dcc.Input(id="gl-q", value="Tell me about Marie Curie and her Nobel Prizes",
+        dcc.Input(id="gl-q", value="What did Marie Curie work on?",
                   placeholder="Ask about any entity in the knowledge graph…", debounce=False,
                   style={"flex": 1, "minWidth": 0, "border": "none", "outline": "none", "background": "transparent",
                          "fontFamily": "inherit", "fontSize": "16px", "color": "#212529"}),
@@ -567,9 +567,9 @@ HERO = html.Div([html.Div([
                      style={"width": "170px", "fontSize": "12px"}),
     ], style={"display": "flex", "alignItems": "center", "gap": "9px", "marginTop": "15px"}),
     html.Div([html.Span("Try", style={"fontSize": "11.5px", "color": "#adb5bd", "fontWeight": 600}),
-              html.Button("Marie Curie's Nobel Prizes", id={"type": "gl-ex", "i": 0}, n_clicks=0, className="gl-ex"),
-              html.Button("Who discovered radium?", id={"type": "gl-ex", "i": 1}, n_clicks=0, className="gl-ex"),
-              html.Button("Pierre & Marie Curie", id={"type": "gl-ex", "i": 2}, n_clicks=0, className="gl-ex")],
+              html.Button("What did Marie Curie work on?", id={"type": "gl-ex", "i": 0}, n_clicks=0, className="gl-ex"),
+              html.Button("Where was Alan Turing born?", id={"type": "gl-ex", "i": 1}, n_clicks=0, className="gl-ex"),
+              html.Button("Who did Albert Einstein work with?", id={"type": "gl-ex", "i": 2}, n_clicks=0, className="gl-ex")],
              style={"display": "flex", "alignItems": "center", "gap": "8px", "marginTop": "22px",
                     "flexWrap": "wrap", "justifyContent": "center"}),
 ], style={"width": "100%", "maxWidth": "620px", "display": "flex", "flexDirection": "column",
@@ -661,9 +661,9 @@ _DRAWER_BASE = {"overflow": "hidden", "background": "#fff", "borderLeft": "1px s
                 "display": "flex", "flexDirection": "column",
                 "transition": "flex-basis .4s cubic-bezier(.22,1,.36,1), width .4s cubic-bezier(.22,1,.36,1)"}
 
-EX_TEXT = {0: "Tell me about Marie Curie and her Nobel Prizes",
-           1: "Who discovered radium and polonium?",
-           2: "How were Pierre and Marie Curie connected?"}
+EX_TEXT = {0: "What did Marie Curie work on?",
+           1: "Where was Alan Turing born?",
+           2: "Who did Albert Einstein work with?"}
 
 
 def drawer_style(is_open):
