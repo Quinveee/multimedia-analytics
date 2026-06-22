@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import csv
 import json
 import os
@@ -24,6 +25,14 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--n-questions", type=int, default=None,
                    help="Number of questions to evaluate (sampled with --seed). "
                         "set None to use the entire dataset.")
+    p.add_argument("--verifier", choices=["llm", "nli"], default="llm",
+                   help="Claim verification method. 'llm' classifies each claim with "
+                        "--verifier-model; 'nli' uses a local cross-encoder (no API cost).")
+    p.add_argument("--verifier-model", default="openai/gpt-4o-mini",
+                   help="OpenRouter model used when --verifier llm. Defaults to a cheap "
+                        "model that is good enough for 3-way claim classification. "
+                        "Other good cheap options: google/gemini-2.0-flash-001, "
+                        "anthropic/claude-3.5-haiku.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out", default="ablation/results.csv",
                    help="Output CSV path (appended to if it already exists)")
@@ -38,23 +47,14 @@ def _configure_env(args: argparse.Namespace) -> None:
         root / "offline" / "data" / "kg_subset.db"))
 
     os.environ["LLM_TEMPERATURE"] = "0.0"
-    # Use NLI verifier so claim verification is model-agnostic across all models
-    os.environ["VERIFIER"] = "nli"
+    # Verifier method + model are fixed here so they don't vary across ablation runs
+    os.environ["VERIFIER"] = args.verifier
+    os.environ["VERIFIER_MODEL"] = args.verifier_model
+    # Keep NLI on CPU so it doesn't try to grab GPU memory
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 
-    if args.openrouter:
-        os.environ["LLM_SMALL_URL"] = "https://openrouter.ai/api/v1"
-        os.environ["LLM_SMALL_MODEL"] = args.model_name
-        openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
-        if not openrouter_key:
-            raise SystemExit(
-                "OPENROUTER_API_KEY environment variable is not set.")
-        os.environ["LLM_SMALL_API_KEY"] = openrouter_key
-    else:
-        # Local vLLM mode
-        os.environ["LLM_SMALL_URL"] = args.model_url
-        os.environ["LLM_SMALL_MODEL"] = args.model_name
-        # Hide the GPUs from the process so NLI doesn't compete with the vLLM server
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        raise SystemExit("OPENROUTER_API_KEY environment variable is not set.")
 
 
 FIELDS = [
@@ -136,11 +136,13 @@ def main() -> None:
 
     remaining = [q for q in sample if q["id"] not in done]
 
-    answer_model = "small"
-    endpoint_label = "OpenRouter" if args.openrouter else args.model_url
+    answer_model = args.model_name
 
     print(f"\nmodel      : {args.model_name}  ({args.model_params}B params)")
-    print(f"endpoint   : {endpoint_label}")
+    print(f"endpoint   : OpenRouter")
+    verifier_label = (f"llm ({args.verifier_model})"
+                      if args.verifier == "llm" else "nli (local cross-encoder)")
+    print(f"verifier   : {verifier_label}")
     print(f"questions  : {len(sample)} sampled | {len(done)} already done | "
           f"{len(remaining)} to evaluate")
     print(f"output     : {out}\n")
@@ -173,25 +175,26 @@ def main() -> None:
                 triples_prompt = verbalise_triples(subgraph, question)
 
                 # Closed-book (model answers from parametric memory only)
-                closed_ans = answer_closed(question, model=answer_model)
-                claims_closed = verify_claims(
+                closed_ans = asyncio.run(
+                    answer_closed(question, model=answer_model))
+                claims_closed = asyncio.run(verify_claims(
                     parse_sentences(closed_ans),
                     triples_prompt,
                     verify_uncited=True,
-                )
+                ))
 
                 # Grounded (model must ground every sentence in a KG triple
                 if triples_prompt:
-                    grounded_ans = answer_grounded(
+                    grounded_ans = asyncio.run(answer_grounded(
                         question, triples_prompt, model=answer_model
-                    )
+                    ))
                 else:
                     grounded_ans = closed_ans
-                claims_grounded = verify_claims(
+                claims_grounded = asyncio.run(verify_claims(
                     parse_claims(grounded_ans),
                     triples_prompt,
                     verify_uncited=False,
-                )
+                ))
 
                 for setting, claims in (
                     ("closed", claims_closed),
