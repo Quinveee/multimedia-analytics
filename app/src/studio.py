@@ -73,21 +73,22 @@ def label_icon(label, size=15):
     glyph, width = (CHECK_GLYPH, 2.6) if label == "supported" else (WARN_GLYPH, 2)
     return icon(glyph, size, st["color"], width)
 
-# ── node thumbnail (SVG data-URI), mirrors the design's thumb() ────────────────
+# ── node thumbnail (SVG data-URI) ──────────────────────────────────────────────
 def thumb(node, size=64):
-    if not node.get("has_image"):
-        s = size
-        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{s}" height="{s}">'
-               f'<rect width="{s}" height="{s}" rx="10" fill="#f1f3f5"/>'
-               f'<g stroke="#ced4da" stroke-width="2" fill="none">'
-               f'<rect x="{s*.22}" y="{s*.26}" width="{s*.56}" height="{s*.48}" rx="6"/>'
-               f'<path d="M{s*.28} {s*.6} L{s*.42} {s*.46} L{s*.54} {s*.58} L{s*.64} {s*.5} L{s*.72} {s*.6}"/>'
-               f'<circle cx="{s*.62}" cy="{s*.4}" r="{s*.05}"/></g>'
-               f'<line x1="{s*.2}" y1="{s*.78}" x2="{s*.8}" y2="{s*.2}" stroke="#fa5252" stroke-width="2.2"/></svg>')
-        return "data:image/svg+xml;utf8," + quote(svg)
-    a, b = data.KIND_COLORS.get(node.get("kind"), data.KIND_COLORS["concept"])
     glyph = node.get("glyph", "?")
     fs = size * (.3 if len(glyph) > 2 else .4)
+    if not node.get("has_image"):
+        # clean "no photo" tile: soft neutral gradient + the entity's initials,
+        # tinted faintly by its kind colour (signals the type without a photo).
+        tint = data.NODE_BORDER.get(node.get("kind"), "#868e96")
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}">'
+               f'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+               f'<stop offset="0" stop-color="#f5f7f9"/><stop offset="1" stop-color="#e4e8ec"/></linearGradient></defs>'
+               f'<rect width="{size}" height="{size}" rx="10" fill="url(#g)"/>'
+               f'<text x="50%" y="54%" font-family="Open Sans,sans-serif" font-size="{fs}" font-weight="800" '
+               f'fill="{tint}" fill-opacity=".55" text-anchor="middle" dominant-baseline="middle">{glyph}</text></svg>')
+        return "data:image/svg+xml;utf8," + quote(svg)
+    a, b = data.KIND_COLORS.get(node.get("kind"), data.KIND_COLORS["concept"])
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}">'
            f'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
            f'<stop offset="0" stop-color="{a}"/><stop offset="1" stop-color="{b}"/></linearGradient></defs>'
@@ -113,7 +114,7 @@ CYTO_STYLESHEET = [
         "width": 44, "height": 44, "overlay-opacity": 0}},
     {"selector": "node.big", "style": {"width": 62, "height": 62, "border-width": 3.5,
                                        "font-size": 11, "font-weight": 800, "color": "#212529"}},
-    {"selector": "node[gap = 1]", "style": {"border-style": "dashed", "border-color": "#fa5252"}},
+    {"selector": "node[gap = 1]", "style": {"border-style": "dashed", "border-color": "#ced4da", "border-width": 2}},
     {"selector": "edge", "style": {
         "width": 1.5, "line-color": "#dee2e6", "curve-style": "bezier", "label": "data(label)",
         "font-family": "Open Sans, sans-serif", "font-size": 8, "color": "#adb5bd",
@@ -125,12 +126,36 @@ CYTO_STYLESHEET = [
 ]
 
 
-def build_elements(vm, selected=None, hi_edges=None):
-    """selected: node id(s) to mark sel-node. hi_edges: (source, target) pairs to light up."""
+def graph_meta(vm, only_used):
+    if only_used:
+        ue, un = used_keys(vm)
+        return f"{len(un)} entities · {len(ue)} relations used"
+    return f"{vm['counts']['entities']} entities · {len(vm['edges'])} relations"
+
+
+def used_keys(vm):
+    """Edges + nodes that actually back the answer (union of cited triples)."""
+    edges, nodes = set(), set()
+    for cit in (vm.get("citations") or {}).values():
+        for pair in cit.get("edges", []):
+            edges.add(frozenset(pair))
+            nodes.update(pair)
+        for k in ("node", "node2"):
+            if cit.get(k):
+                nodes.add(cit[k])
+    return edges, nodes
+
+
+def build_elements(vm, selected=None, hi_edges=None, only_used=False):
+    """selected: node id(s) to mark sel-node. hi_edges: (source, target) pairs to light up.
+    only_used: keep only the relations (and their nodes) that backed the answer."""
     sel = ({selected} if isinstance(selected, str) else set(selected)) if selected else set()
     hi = {frozenset(p) for p in (hi_edges or [])}
+    u_edges, u_nodes = used_keys(vm) if only_used else (None, None)
     els = []
     for n in vm["nodes"]:
+        if only_used and n["id"] not in u_nodes:
+            continue
         classes = []
         if n.get("big"):
             classes.append("big")
@@ -144,7 +169,10 @@ def build_elements(vm, selected=None, hi_edges=None):
             d["position"] = {"x": n["x"], "y": n["y"]}
         els.append(d)
     for i, e in enumerate(vm["edges"]):
-        cls = "hi-edge" if frozenset((e["source"], e["target"])) in hi else ""
+        key = frozenset((e["source"], e["target"]))
+        if only_used and key not in u_edges:
+            continue
+        cls = "hi-edge" if key in hi else ""
         els.append({"data": {"id": f"e{i}", "source": e["source"], "target": e["target"], "label": e["label"]},
                     "classes": cls})
     return els
@@ -336,14 +364,10 @@ def detail_for(vm, node_id, cid=None):
         return detail_hint()
     cit = vm["citations"].get(cid) if cid else next(
         (c for c in vm["citations"].values() if c.get("node") == node_id or c.get("node2") == node_id), None)
-    if node.get("has_image"):
-        img = html.Img(src=node_img_src(node), style={"width": "54px", "height": "54px", "borderRadius": "11px", "flex": "0 0 auto"})
-    else:
-        img = html.Div([icon('<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m21 15-5-5L5 21"/><line x1="3" y1="3" x2="21" y2="21"/>', 18, "#fa5252", 1.8),
-                        html.Span("NO IMAGE", style={"fontSize": "7px", "color": "#e03131", "fontWeight": 700})],
-                       style={"width": "54px", "height": "54px", "borderRadius": "11px", "border": "1.5px dashed #ffa8a8",
-                              "background": "#fff5f5", "display": "flex", "flexDirection": "column",
-                              "alignItems": "center", "justifyContent": "center", "gap": "2px", "flex": "0 0 auto"})
+    # clean initials tile for no-image nodes; dashed border keeps the "no photo" cue
+    img = html.Img(src=node_img_src(node), style={
+        "width": "54px", "height": "54px", "borderRadius": "11px", "flex": "0 0 auto",
+        **({} if node.get("has_image") else {"border": "1.5px dashed #ced4da"})})
     triple = cit["triple"] if cit else node["label"]
     src = cit["src"] if cit else "Knowledge graph"
     # #3 — mask this entity and regenerate (causal intervention)
@@ -592,6 +616,9 @@ DRAWER = html.Aside([
                            style={"lineHeight": "1.2", "whiteSpace": "nowrap"})],
                  style={"display": "flex", "alignItems": "center", "gap": "9px"}),
         html.Div([
+            html.Button(icon('<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>', 14, "currentColor", 2, style={"display": "inline-block"}),
+                        id="gl-only-used-btn", n_clicks=0, className="gl-hoverbg",
+                        title="Show only the relations used to answer", style=_drawer_btn()),
             html.Button(icon(FIT_GLYPH, 14, "currentColor", 2, style={"display": "inline-block"}),
                         id="gl-fit", n_clicks=0, className="gl-hoverbg", title="Fit", style=_drawer_btn()),
             html.Button(icon(CHEV_GLYPH, 15, "currentColor", 2.2, style={"display": "inline-block"}),
@@ -617,6 +644,7 @@ app.layout = html.Div([
     dcc.Store(id="gl-played", data=False),
     dcc.Store(id="gl-pending"),        # {q, model, ds, verifier} → triggers the heavy run
     dcc.Store(id="gl-filter", data=ALL_LABELS),   # active support levels in compare (#4)
+    dcc.Store(id="gl-only-used", data=False),     # graph: show only the relations used to answer
     dcc.Interval(id="gl-interval", interval=650, disabled=True, n_intervals=0),
     HEADER,
     html.Div([html.Div([HERO, RESULTS], id="gl-chat", style={"flex": "1 1 auto", "minWidth": 0, "minHeight": 0,
@@ -741,10 +769,10 @@ async def on_mask(clicks, vm):
     Output("gl-cy", "elements"), Output("gl-cy", "layout"), Output("gl-detail", "children"),
     Output("gl-drawer", "style"), Output("gl-drawer-open", "data"), Output("gl-graph-meta", "children"),
     Output("gl-played", "data"),
-    Input("gl-interval", "n_intervals"), State("gl-store", "data"),
+    Input("gl-interval", "n_intervals"), State("gl-store", "data"), State("gl-only-used", "data"),
     prevent_initial_call=True,
 )
-def on_tick(n, vm):
+def on_tick(n, vm, only_used):
     if not vm:
         return (True,) + (no_update,) * 10
     NU = no_update
@@ -757,7 +785,8 @@ def on_tick(n, vm):
             return (False, trace_running(vm, "done", "active", "pending"), [], actions_running(),
                     NU, NU, NU, NU, NU, "no facts found", NU)
         return (False, trace_running(vm, "done", "active", "pending"), [], actions_running(),
-                build_elements(vm), layout_for(vm), detail_hint(), drawer_style(True), True, "retrieving…", NU)
+                build_elements(vm, only_used=only_used), layout_for(vm), detail_hint(),
+                drawer_style(True), True, "retrieving…", NU)
     if n == 3:  # grounding the answer
         return (False, trace_running(vm, "done", "done", "active"), [], actions_running(),
                 NU, NU, NU, NU, NU, NU, NU)
@@ -768,11 +797,10 @@ def on_tick(n, vm):
                 "no subgraph retrieved", True)
     cid, node_id = first_citation(vm)
     cit = vm["citations"].get(cid, {})
-    sel = [n for n in (cit.get("node"), cit.get("node2")) if n] or ([node_id] if node_id else [])
-    meta = f"{vm['counts']['entities']} entities · {len(vm['edges'])} relations"
+    sel = [x for x in (cit.get("node"), cit.get("node2")) if x] or ([node_id] if node_id else [])
     return (True, trace_summary(vm), render_answer(vm), render_actions(True),
-            build_elements(vm, selected=sel, hi_edges=cit.get("edges")), layout_for(vm),
-            detail_for(vm, node_id, cid), drawer_style(True), True, meta, True)
+            build_elements(vm, selected=sel, hi_edges=cit.get("edges"), only_used=only_used),
+            layout_for(vm), detail_for(vm, node_id, cid), drawer_style(True), True, graph_meta(vm, only_used), True)
 
 
 # ── grounded ↔ compare view toggle ─────────────────────────────────────────────
@@ -815,9 +843,10 @@ def on_filter(clicks, active, vm):
     Output("gl-drawer", "style", allow_duplicate=True), Output("gl-drawer-open", "data", allow_duplicate=True),
     Input({"type": "gl-cite", "cid": ALL}, "n_clicks"), Input("gl-cy", "tapNodeData"),
     Input("gl-trace-pill", "n_clicks"),
-    State("gl-store", "data"), State("gl-drawer-open", "data"), prevent_initial_call=True,
+    State("gl-store", "data"), State("gl-drawer-open", "data"), State("gl-only-used", "data"),
+    prevent_initial_call=True,
 )
-def on_inspect(cite_clicks, tap, _pill, vm, is_open):
+def on_inspect(cite_clicks, tap, _pill, vm, is_open, only_used):
     if not vm:
         return (no_update,) * 4
     trig = ctx.triggered_id
@@ -834,18 +863,34 @@ def on_inspect(cite_clicks, tap, _pill, vm, is_open):
         cid = trig["cid"]
         cit = vm["citations"].get(cid, {})
         node_id = cit.get("node")
-        sel = [n for n in (cit.get("node"), cit.get("node2")) if n]
+        sel = [x for x in (cit.get("node"), cit.get("node2")) if x]
         return (detail_for(vm, node_id, cid),
-                build_elements(vm, selected=sel, hi_edges=cit.get("edges")),
+                build_elements(vm, selected=sel, hi_edges=cit.get("edges"), only_used=only_used),
                 drawer_style(True), True)
     # node tapped in the graph → highlight the node and all its incident edges
     if trig == "gl-cy" and tap:
         node_id = tap["id"]
         incident = [(e["source"], e["target"]) for e in vm["edges"] if node_id in (e["source"], e["target"])]
         return (detail_for(vm, node_id),
-                build_elements(vm, selected=node_id, hi_edges=incident),
+                build_elements(vm, selected=node_id, hi_edges=incident, only_used=only_used),
                 drawer_style(True), True)
     return (no_update,) * 4
+
+
+# ── toggle: show only the relations used to answer (graph) ─────────────────────
+@callback(
+    Output("gl-only-used", "data"), Output("gl-cy", "elements", allow_duplicate=True),
+    Output("gl-cy", "layout", allow_duplicate=True), Output("gl-graph-meta", "children", allow_duplicate=True),
+    Output("gl-only-used-btn", "style"),
+    Input("gl-only-used-btn", "n_clicks"), State("gl-only-used", "data"), State("gl-store", "data"),
+    prevent_initial_call=True,
+)
+def on_toggle_used(_n, on, vm):
+    if not vm:
+        return (no_update,) * 5
+    nxt = not on
+    btn = {**_drawer_btn(), **({"background": "#e7f5ff", "color": "#1971c2", "borderColor": "#a5d8ff"} if nxt else {})}
+    return (nxt, build_elements(vm, only_used=nxt), layout_for(vm), graph_meta(vm, nxt), btn)
 
 
 # ── drawer collapse / toggle / fit ─────────────────────────────────────────────
