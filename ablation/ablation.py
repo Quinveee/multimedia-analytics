@@ -57,6 +57,9 @@ def _configure_env(args: argparse.Namespace) -> None:
         raise SystemExit("OPENROUTER_API_KEY environment variable is not set.")
 
 
+# grounded refusal, identical to pipeline.py::ABSTAIN_MARKER.
+ABSTAIN_MARKER = "do not contain enough information"
+
 FIELDS = [
     "question_id", "model", "model_params", "setting",
     "n_claims", "n_supported", "n_inferred", "n_unverifiable",
@@ -215,10 +218,17 @@ def main() -> None:
                     ))
                 else:
                     grounded_ans = closed_ans
+
+                # abstention is NOT a hallucination (same logic as
+                # pipeline.py): if the grounded model declined for lack of facts,
+                # give it an empty claim list so it contributes no claims.
+                abstained = (bool(triples_prompt)
+                             and ABSTAIN_MARKER in grounded_ans.lower())
+
                 # Citations index the retrieved triples, not the gold set, so
                 # clear them and check every claim against the full gold evidence
                 # (same treatment as the closed-book claims).
-                grounded_claims = [
+                grounded_claims = [] if abstained else [
                     {**c, "cited_triples": []} for c in parse_claims(grounded_ans)
                 ]
                 claims_grounded = asyncio.run(verify_claims(
