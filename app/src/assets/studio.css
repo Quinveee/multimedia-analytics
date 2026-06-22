@@ -1,0 +1,86 @@
+/* ===== KG Grounding Studio — styles (ported from the design) ===== */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: #fbfcfd;
+  font-family: 'Open Sans', system-ui, sans-serif;
+  color: #212529;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+#react-entry-point, #_dash-app-content { height: 100%; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* scrollbars */
+.gl-scroll::-webkit-scrollbar { width: 8px; }
+.gl-scroll::-webkit-scrollbar-thumb { background: #e3e6ea; border-radius: 8px; }
+
+/* placeholder */
+#gl-q::placeholder, #gl-q-results::placeholder { color: #adb5bd; }
+
+/* keyframes */
+@keyframes gl-fadeup { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+@keyframes gl-rise   { from { transform: translateY(5px); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes gl-spin   { to { transform: rotate(360deg); } }
+@keyframes gl-blink  { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+@keyframes gl-pop    { 0% { transform: scale(1); } 40% { transform: scale(1.28); } 100% { transform: scale(1); } }
+@keyframes gl-shimmer{ 0% { background-position: -280px 0; } 100% { background-position: 280px 0; } }
+
+.gl-fadeup { animation: gl-fadeup .4s ease both; }
+.gl-rise   { animation: gl-rise .4s ease both; }
+.gl-pop    { animation: gl-pop .4s ease both; }
+.gl-spin {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid #d0ebff; border-top-color: #1971c2;
+  border-radius: 50%; animation: gl-spin .7s linear infinite;
+}
+.gl-spin-lg { width: 16px; height: 16px; }
+
+.gl-skel {
+  background: linear-gradient(90deg, #eef0f2 25%, #e6e9ed 37%, #eef0f2 63%);
+  background-size: 560px 100%;
+  animation: gl-shimmer 1.3s linear infinite;
+  border-radius: 6px;
+}
+
+/* hero search field focus */
+#gl-hero-field:focus-within {
+  border-color: #a5d8ff !important;
+  box-shadow: 0 8px 34px -12px rgba(34,139,230,.4) !important;
+}
+
+/* hover affordances */
+.gl-hoverbg:hover { background: #f1f3f5 !important; }
+.gl-submit:hover { background: #1c7ed6 !important; }
+.gl-chip:hover { background: #f1f3f5 !important; }
+
+/* citation spans */
+.gl-cite {
+  border-bottom: 1.5px solid #91c8f0;
+  cursor: pointer; border-radius: 3px; padding: 0 1px;
+  transition: background .14s;
+}
+.gl-cite:hover { background: #e7f5ff; }
+.gl-cite sup {
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 500;
+  color: #1971c2; background: #e7f5ff; border-radius: 5px;
+  padding: 1px 4px; margin-left: 3px; position: relative; top: -3px;
+  display: inline-block;
+}
+
+/* example chips on the hero */
+.gl-ex {
+  border: 1px solid #e9ecef; background: #fff; border-radius: 20px;
+  padding: 5px 12px; font-family: inherit; font-size: 12px; color: #495057;
+  cursor: pointer; transition: .12s;
+}
+.gl-ex:hover { background: #f1f3f5; }
+
+/* native select reset (model / dataset dropdowns) */
+.gl-select {
+  appearance: none; -webkit-appearance: none; border: none; background: transparent;
+  font-family: inherit; font-size: 12px; font-weight: 600; color: #495057;
+  cursor: pointer; outline: none;
+}
