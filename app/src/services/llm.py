@@ -16,7 +16,14 @@ def _get_openai_client(base_url: str, api_key: str):
     if key not in _openai_clients:
         from openai import OpenAI
 
-        _openai_clients[key] = OpenAI(api_key=api_key, base_url=base_url)
+        kwargs = {"api_key": api_key, "base_url": base_url}
+        if base_url and "openrouter" in base_url:
+            # optional attribution headers, recommended by OpenRouter
+            kwargs["default_headers"] = {
+                "HTTP-Referer": "https://github.com/GoncaloBFM/mma2026",
+                "X-Title": "KG Grounding Studio",
+            }
+        _openai_clients[key] = OpenAI(**kwargs)
     return _openai_clients[key]
 
 
@@ -113,8 +120,36 @@ def _chat(messages: list[dict], model: str = None) -> str:
     return resp.choices[0].message.content.strip()
 
 
-def answer_closed(question: str, model: str = None) -> str:
-    return _chat(
+async def _achat(messages: list[dict], model: str = None) -> str:
+    """Async chat completion via AsyncOpenAI (OpenRouter / OpenAI-compatible).
+
+    The client is created per call (not cached): a cached AsyncOpenAI binds to a
+    single event loop, and the Dash/asgiref callback loop may differ between
+    requests, which would raise "event loop is closed".
+    """
+    if MOCK:
+        return "[MOCK] This is a dummy LLM response."
+
+    model = model or config.ANSWER_MODEL
+    _provider, base_url, api_key, model_name = config.resolve_llm(model)
+
+    from openai import AsyncOpenAI
+
+    kwargs = {"api_key": api_key, "base_url": base_url}
+    if base_url and "openrouter" in base_url:
+        kwargs["default_headers"] = {
+            "HTTP-Referer": "https://github.com/GoncaloBFM/mma2026",
+            "X-Title": "KG Grounding Studio",
+        }
+    async with AsyncOpenAI(**kwargs) as client:
+        resp = await client.chat.completions.create(
+            model=model_name, messages=messages, temperature=config.LLM_TEMPERATURE
+        )
+    return resp.choices[0].message.content.strip()
+
+
+async def answer_closed(question: str, model: str = None) -> str:
+    return await _achat(
         [
             {
                 "role": "system",
@@ -126,7 +161,7 @@ def answer_closed(question: str, model: str = None) -> str:
     )
 
 
-def answer_grounded(
+async def answer_grounded(
     question: str, triples: str, model: str = None, image_paths: list[str] = None
 ) -> str:
     system = (
@@ -134,6 +169,7 @@ def answer_grounded(
         "Each sentence must state exactly one fact and end with its citation. "
         "Do not use bullet points or lists. "
         "Do not combine multiple facts into one sentence.\n\n"
+        "Make the text well formulated and sound."
         "Correct: 'Marie Curie was born in Warsaw. [T1] She died from aplastic anemia. [T5]'\n"
         "Wrong: 'Marie Curie was born in Warsaw and died from aplastic anemia. [T1][T5]'\n\n"
         "If the facts contain no relevant information, respond only with: "
@@ -146,7 +182,7 @@ def answer_grounded(
         if image_blocks
         else question
     )
-    return _chat(
+    return await _achat(
         [
             {"role": "system", "content": system},
             {"role": "user", "content": user_content},

@@ -1,5 +1,7 @@
+import asyncio
+
 from src import config
-from src.services.llm import _chat
+from src.services.llm import _achat
 
 _nli_model = None
 
@@ -15,7 +17,7 @@ def _get_nli():
     return _nli_model
 
 
-def _verify_llm(claim: str, triples: str) -> str:
+async def _verify_llm(claim: str, triples: str) -> str:
     """
     Classify a claim against triple text using an LLM. Returns supported/inferred/unverifiable.
     """
@@ -28,11 +30,8 @@ def _verify_llm(claim: str, triples: str) -> str:
         f"Claim: {claim}\n\n"
         f"Reply with only one word: supported, inferred, or unverifiable."
     )
-    label = (
-        _chat([{"role": "user", "content": prompt}], model=config.VERIFIER_MODEL)
-        .lower()
-        .strip()
-    )
+    raw = await _achat([{"role": "user", "content": prompt}], model=config.VERIFIER_MODEL)
+    label = raw.lower().strip()
     return (
         label if label in ("supported", "inferred", "unverifiable") else "unverifiable"
     )
@@ -53,32 +52,36 @@ def _verify_nli(claim: str, cited_triple_texts: list[str]) -> str:
     return "unverifiable"
 
 
-def verify_claims(
-    claims: list[dict], triples: str, verify_uncited: bool = False
+async def verify_claims(
+    claims: list[dict], triples: str, verify_uncited: bool = False, verifier: str = None
 ) -> list[dict]:
     """
-    Verify each claim against its cited triples.
+    Verify each claim against its cited triples. The per-claim LLM checks run
+    concurrently (asyncio.gather).
 
     verify_uncited=True: claims with no citations are verified against all triples (used for closed-book).
     verify_uncited=False: claims with no citations are marked unverifiable (used for grounded).
+    verifier: "llm" | "nli" — overrides config.VERIFIER when given.
     """
+    backend = (verifier or config.VERIFIER).lower()
     triple_lines = [t for t in triples.splitlines() if t.strip()]
-    results = []
-    for c in claims:
+
+    async def label_for(c: dict) -> dict:
         cited = c.get("cited_triples", [])
         if not cited:
             if verify_uncited and triple_lines:
                 cited_texts = triple_lines
             else:
-                results.append({**c, "label": "unverifiable"})
-                continue
+                return {**c, "label": "unverifiable"}
         else:
             cited_texts = [
                 triple_lines[i - 1] for i in cited if 0 < i <= len(triple_lines)
             ]
-        if config.VERIFIER == "nli":
-            label = _verify_nli(c["claim"], cited_texts)
+        if backend == "nli":
+            # CPU-bound model; run off the event loop to keep it responsive.
+            label = await asyncio.to_thread(_verify_nli, c["claim"], cited_texts)
         else:
-            label = _verify_llm(c["claim"], "\n".join(cited_texts))
-        results.append({**c, "label": label})
-    return results
+            label = await _verify_llm(c["claim"], "\n".join(cited_texts))
+        return {**c, "label": label}
+
+    return list(await asyncio.gather(*(label_for(c) for c in claims)))

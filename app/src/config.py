@@ -1,6 +1,14 @@
 import os
 from pathlib import Path
 
+# Best-effort: load a .env (repo root or app/) so API keys can live in a file.
+try:
+    from dotenv import find_dotenv, load_dotenv
+
+    load_dotenv(find_dotenv(usecwd=True))
+except Exception:
+    pass
+
 # ── KG ────────────────────────────────────────────────────────────────────────
 KG_PATH = Path(os.getenv("KG_PATH", "../offline/data/kg_subset.db"))
 KG_HOP = int(os.getenv("KG_HOP", "1"))
@@ -9,16 +17,19 @@ KG_MAX_TRIPLES = int(os.getenv("KG_MAX_TRIPLES", "30"))
 # ── Spotlight ─────────────────────────────────────────────────────────────────
 SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate")
 
-# ── LLM ───────────────────────────────────────────────────────────────────────
-ANSWER_MODEL = os.getenv("ANSWER_MODEL", "small")
-CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", "big")
-VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", "big")
+# ── LLM (all models served via OpenRouter) ────────────────────────────────────
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-4o")
+ANSWER_MODEL = os.getenv("ANSWER_MODEL", DEFAULT_MODEL)
+CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", DEFAULT_MODEL)
+VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", DEFAULT_MODEL)
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
 # API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "dummy")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "dummy")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "dummy")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "dummy")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
 # vLLM endpoints on Snellius
 LLM_SMALL_URL = os.getenv("LLM_SMALL_URL", "http://localhost:8267/v1")
@@ -28,24 +39,14 @@ LLM_BIG_MODEL = os.getenv("LLM_BIG_MODEL", "Qwen/Qwen3-VL-32B-Instruct")
 
 
 def resolve_llm(model: str) -> tuple[str, str, str, str]:
+    """Every model is served through OpenRouter (OpenAI-compatible).
+
+    Returns (provider, base_url, api_key, model_name). ``model`` is an OpenRouter
+    id such as "openai/gpt-4o" or "anthropic/claude-3.7-sonnet" (an optional
+    "openrouter/" prefix is stripped).
     """
-    Return (provider, base_url, api_key, model_name) from a model identifier.
-    """
-    m = model.lower()
-    if m == "small":
-        return "vllm", LLM_SMALL_URL, "dummy", LLM_SMALL_MODEL
-    if m == "big":
-        return "vllm", LLM_BIG_URL, "dummy", LLM_BIG_MODEL
-    if m.startswith("claude"):
-        return "anthropic", None, ANTHROPIC_API_KEY, model
-    if m.startswith("gemini"):
-        return (
-            "gemini",
-            "https://generativelanguage.googleapis.com/v1beta/openai/",
-            GEMINI_API_KEY,
-            model,
-        )
-    return "openai", "https://api.openai.com/v1", OPENAI_API_KEY, model
+    name = model[len("openrouter/"):] if model.lower().startswith("openrouter/") else model
+    return "openrouter", OPENROUTER_BASE_URL, OPENROUTER_API_KEY, name
 
 
 # ── Verifier ──────────────────────────────────────────────────────────────────

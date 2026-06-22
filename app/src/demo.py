@@ -192,11 +192,11 @@ def _subgraph_to_elements(subgraph):
     State("question-input", "value"),
     prevent_initial_call=True,
 )
-def on_run(n_clicks, question):
+async def on_run(n_clicks, question):
     if not question:
         return "Please enter a question.", None, {"display": "none"}, []
 
-    result = run_pipeline(question)
+    result = await run_pipeline(question)
     store_data = {"question": result["question"], "subgraph": result["subgraph"]}
     return (
         _result_layout(result),
@@ -213,7 +213,7 @@ def on_run(n_clicks, question):
     State("store", "data"),
     prevent_initial_call=True,
 )
-def on_rerun(n_clicks, selected_nodes, store_data):
+async def on_rerun(n_clicks, selected_nodes, store_data):
     if not store_data:
         return "Run the pipeline first."
     if not selected_nodes:
@@ -230,7 +230,7 @@ def on_rerun(n_clicks, selected_nodes, store_data):
         ],
     }
 
-    result = run_pipeline(store_data["question"], subgraph=filtered)
+    result = await run_pipeline(store_data["question"], subgraph=filtered)
     return html.Div(
         [
             html.H6(f"Re-run with {len(selected_ids)} selected node(s):"),
