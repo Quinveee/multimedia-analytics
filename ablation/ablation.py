@@ -28,7 +28,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--verifier", choices=["llm", "nli"], default="llm",
                    help="Claim verification method. 'llm' classifies each claim with "
                         "--verifier-model; 'nli' uses a local cross-encoder (no API cost).")
-    p.add_argument("--verifier-model", default="openai/gpt-4o-mini",
+    p.add_argument("--verifier-model", default="openai/gpt-5-nano",
                    help="OpenRouter model used when --verifier llm. Defaults to a cheap "
                         "model that is good enough for 3-way claim classification. "
                         "Other good cheap options: google/gemini-2.0-flash-001, "
@@ -88,6 +88,28 @@ def _stats(claims: list[dict]) -> dict:
         "n_unverifiable": n_unv,
         "hallucination_rate": round(n_unv / n, 6) if n > 0 else 0.0,
     }
+
+
+def _pretty(uri: str) -> str:
+    """dbr:Stanley_Kubrick -> Stanley Kubrick ; dbo:director -> director."""
+    if uri.startswith("http"):
+        local = uri.rstrip("/").rsplit("/", 1)[-1]
+    else:
+        local = uri.split(":", 1)[1] if ":" in uri else uri
+    return local.replace("_", " ").strip()
+
+
+def verbalise_gold(evidence_triples: list[dict]) -> str:
+    """Gold evidence_triples as '[T1] subj pred obj' lines, matching the
+    verbalise_triples format so the verifier prompt is identical to the
+    dashboard's — only the reference corpus (gold vs retrieved) differs."""
+    lines = []
+    for i, t in enumerate(evidence_triples, 1):
+        s = _pretty(t.get("subject", ""))
+        p = _pretty(t.get("predicate", ""))
+        o = _pretty(t.get("object", ""))
+        lines.append(f"[T{i}] {s} {p} {o}")
+    return "\n".join(lines)
 
 
 def main() -> None:
@@ -172,28 +194,37 @@ def main() -> None:
 
             try:
                 subgraph = KG.get_subgraph(seed_uris, k=1)
+                # Retrieved triples drive GENERATION (same as the dashboard);
+                # gold evidence is the corpus we VERIFY answers against.
                 triples_prompt = verbalise_triples(subgraph, question)
+                gold_prompt = verbalise_gold(q.get("evidence_triples", []))
 
                 # Closed-book (model answers from parametric memory only)
                 closed_ans = asyncio.run(
                     answer_closed(question, model=answer_model))
                 claims_closed = asyncio.run(verify_claims(
                     parse_sentences(closed_ans),
-                    triples_prompt,
+                    gold_prompt,
                     verify_uncited=True,
                 ))
 
-                # Grounded (model must ground every sentence in a KG triple
+                # Grounded (answer generated from retrieved triples)
                 if triples_prompt:
                     grounded_ans = asyncio.run(answer_grounded(
                         question, triples_prompt, model=answer_model
                     ))
                 else:
                     grounded_ans = closed_ans
+                # Citations index the retrieved triples, not the gold set, so
+                # clear them and check every claim against the full gold evidence
+                # (same treatment as the closed-book claims).
+                grounded_claims = [
+                    {**c, "cited_triples": []} for c in parse_claims(grounded_ans)
+                ]
                 claims_grounded = asyncio.run(verify_claims(
-                    parse_claims(grounded_ans),
-                    triples_prompt,
-                    verify_uncited=False,
+                    grounded_claims,
+                    gold_prompt,
+                    verify_uncited=True,
                 ))
 
                 for setting, claims in (
