@@ -1,0 +1,62 @@
+#!/bin/bash
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+#SBATCH --job-name=ablation-30b
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=80G
+#SBATCH --time=06:00:00
+#SBATCH --output=ablation/logs/run_30b_%j.out
+
+# 30B parameters at bfloat16 = ~60 GB weights.
+# One H100 (80 GB) fits with --gpu-memory-utilization 0.92, leaving ~14 GB for KV cache.
+# If it OOMs, switch to --gpus=2 and add --tensor-parallel-size 2.
+
+set -e
+mkdir -p ablation/logs
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+module load CUDA/12.1.1
+
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate vllm-env
+
+export HF_HOME=/scratch-shared/$USER/.cache/huggingface
+
+MODEL_NAME="Qwen/Qwen3-VL-30B-A3B-Instruct"
+MODEL_PARAMS=30
+PORT=8267
+
+echo "=== Starting vLLM for $MODEL_NAME on port $PORT ==="
+python -m vllm.entrypoints.openai.api_server \
+    --model "$MODEL_NAME" \
+    --port $PORT \
+    --max-model-len 8192 \
+    --gpu-memory-utilization 0.92 &
+VLLM_PID=$!
+
+echo "Waiting for vLLM to be ready (30B loads slowly)..."
+MAX_WAIT=900
+ELAPSED=0
+until curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; do
+    sleep 15; ELAPSED=$((ELAPSED + 15))
+    if [ $ELAPSED -ge $MAX_WAIT ]; then
+        echo "ERROR: vLLM did not start within ${MAX_WAIT}s"; kill $VLLM_PID; exit 1
+    fi
+done
+echo "vLLM ready after ${ELAPSED}s"
+
+echo "=== Running ablation ==="
+python ablation/ablation.py \
+    --model-name   "$MODEL_NAME" \
+    --model-params $MODEL_PARAMS \
+    --model-url    "http://localhost:$PORT/v1" \
+    --n-questions  500 \
+    --out          ablation/results.csv
+
+echo "=== Stopping vLLM ==="
+kill $VLLM_PID
+wait $VLLM_PID 2>/dev/null || true
+echo "Done."

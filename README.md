@@ -10,6 +10,7 @@ An interactive visual analytics dashboard where users ask natural language quest
 - `offline/` — offline data pipeline (KG subset construction from DBpedia + LC-QuAD)
 - `vllm/` — Slurm jobs to serve LLM on Snellius via vLLM
 - `spotlight/` — Slurm jobs to serve DBpedia Spotlight on Snellius
+- `ablation/` — ablation pipeline (queries models and creates hallucination v.      parameter count plot)
 
 ## Setup
 

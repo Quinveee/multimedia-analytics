@@ -23,8 +23,14 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "dummy")
 # vLLM endpoints on Snellius
 LLM_SMALL_URL = os.getenv("LLM_SMALL_URL", "http://localhost:8267/v1")
 LLM_SMALL_MODEL = os.getenv("LLM_SMALL_MODEL", "Qwen/Qwen3-VL-8B-Instruct")
+LLM_SMALL_API_KEY = os.getenv("LLM_SMALL_API_KEY", "dummy")
 LLM_BIG_URL = os.getenv("LLM_BIG_URL", "http://localhost:8268/v1")
 LLM_BIG_MODEL = os.getenv("LLM_BIG_MODEL", "Qwen/Qwen3-VL-32B-Instruct")
+LLM_BIG_API_KEY = os.getenv("LLM_BIG_API_KEY", "dummy")
+
+# OpenRouter (OpenAI-compatible proxy)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "dummy")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 def resolve_llm(model: str) -> tuple[str, str, str, str]:
@@ -33,9 +39,9 @@ def resolve_llm(model: str) -> tuple[str, str, str, str]:
     """
     m = model.lower()
     if m == "small":
-        return "vllm", LLM_SMALL_URL, "dummy", LLM_SMALL_MODEL
+        return "vllm", LLM_SMALL_URL, LLM_SMALL_API_KEY, LLM_SMALL_MODEL
     if m == "big":
-        return "vllm", LLM_BIG_URL, "dummy", LLM_BIG_MODEL
+        return "vllm", LLM_BIG_URL, LLM_BIG_API_KEY, LLM_BIG_MODEL
     if m.startswith("claude"):
         return "anthropic", None, ANTHROPIC_API_KEY, model
     if m.startswith("gemini"):

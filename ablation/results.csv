@@ -1,0 +1,11 @@
+question_id,model,model_params,setting,n_claims,n_supported,n_inferred,n_unverifiable,hallucination_rate
+1479,qwen/qwen3-vl-8b-instruct,8.0,closed,4,0,4,0,0.0
+1479,qwen/qwen3-vl-8b-instruct,8.0,grounded,1,0,0,1,1.0
+3274,qwen/qwen3-vl-8b-instruct,8.0,closed,3,0,3,0,0.0
+3274,qwen/qwen3-vl-8b-instruct,8.0,grounded,2,2,0,0,0.0
+4412,qwen/qwen3-vl-8b-instruct,8.0,closed,3,0,3,0,0.0
+4412,qwen/qwen3-vl-8b-instruct,8.0,grounded,3,2,0,1,0.333333
+631,qwen/qwen3-vl-8b-instruct,8.0,closed,3,1,2,0,0.0
+631,qwen/qwen3-vl-8b-instruct,8.0,grounded,3,2,0,1,0.333333
+2600,qwen/qwen3-vl-8b-instruct,8.0,closed,1,0,1,0,0.0
+2600,qwen/qwen3-vl-8b-instruct,8.0,grounded,1,0,0,1,1.0
