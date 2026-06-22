@@ -40,9 +40,21 @@ async def _verify_llm(claim: str, triples: str) -> str:
 def _verify_nli(claim: str, cited_triple_texts: list[str]) -> str:
     """
     Classify a claim against triples using a cross-encoder NLI model. Returns supported/inferred/unverifiable.
+
+    Each cited triple is checked individually (so a claim entailed by any single
+    triple counts), and when a claim cites a few specific triples their
+    conjunction is checked too, so a sentence supported only by the *combination*
+    of facts (e.g. "a physicist born in Warsaw [T1][T2]") is not under-rated. The
+    conjunction check is skipped when scanning many triples (closed-book), where
+    any-match is the right semantics and a joined premise would overflow the model.
     """
+    if not cited_triple_texts:
+        return "unverifiable"
     model = _get_nli()
     pairs = [(triple, claim) for triple in cited_triple_texts]
+    if 2 <= len(cited_triple_texts) <= 8:
+        premise = ". ".join(t.strip().rstrip(".") for t in cited_triple_texts)
+        pairs.append((premise, claim))
     scores = model.predict(pairs)
     labels = [_NLI_LABELS[s] for s in scores.argmax(axis=1)]
     if "entailment" in labels:

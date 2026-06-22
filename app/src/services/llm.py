@@ -165,14 +165,22 @@ async def answer_grounded(
     question: str, triples: str, model: str = None, image_paths: list[str] = None
 ) -> str:
     system = (
-        "Answer the question as a paragraph using ONLY the knowledge graph facts below. "
-        "Each sentence must state exactly one fact and end with its citation. "
-        "Do not use bullet points or lists. "
-        "Do not combine multiple facts into one sentence.\n\n"
-        "Make the text well formulated and sound."
-        "Correct: 'Marie Curie was born in Warsaw. [T1] She died from aplastic anemia. [T5]'\n"
-        "Wrong: 'Marie Curie was born in Warsaw and died from aplastic anemia. [T1][T5]'\n\n"
-        "If the facts contain no relevant information, respond only with: "
+        "Answer the question in a natural, fluent paragraph using ONLY the knowledge "
+        "graph facts below. Write the way a knowledgeable person would explain it: "
+        "rephrase the facts into well-formed prose instead of copying them verbatim, "
+        "and connect related facts smoothly. "
+        "End each sentence with the fact ID(s) it relies on — use several, like "
+        "[T2][T5], when a sentence draws on multiple facts. Every sentence that states "
+        "a fact must carry at least one citation, and you may only state what the cited "
+        "facts support. "
+        "Do not use bullet points, lists, or headers.\n\n"
+        "Example facts:\n"
+        "[T1] Marie Curie birthPlace Warsaw\n"
+        "[T2] Marie Curie field Physics\n"
+        "[T3] Marie Curie award Nobel Prize in Physics\n"
+        "Example answer: Marie Curie was a physicist born in Warsaw [T1][T2]. "
+        "She went on to be awarded the Nobel Prize in Physics [T3].\n\n"
+        "If the facts do not contain enough information to answer, respond only with: "
         '"The provided facts do not contain enough information to answer this question."\n\n'
         f"Facts:\n{triples}"
     )
@@ -193,51 +201,44 @@ async def answer_grounded(
 
 def parse_claims(answer: str) -> list[dict]:
     """
-    Parse [T#] citations from a grounded answer into one claim per citation.
+    Parse a grounded answer into sentence-level claims with their [T#] citations.
 
-    Boundaries are: start of text, after a period, or after a previous [T#].
-    The text between the last boundary and a [T#] becomes one claim citing that triple.
-    Any trailing text after the last [T#] is collected as an uncited claim.
+    Splits the answer into sentences, absorbing any citations that trail the
+    sentence-final punctuation (e.g. "... born in Warsaw. [T1]"), and collects
+    every [T#] the sentence contains into ``cited_triples`` (a sentence may draw
+    on several facts). A sentence carrying no citation yields ``cited_triples=[]``
+    and is flagged unverifiable downstream. Sentence terminators inside decimals
+    or abbreviations (no following whitespace) are not split on.
+
+    Spans are contiguous and non-overlapping, covering the whole answer, so the
+    frontend can highlight each claim directly.
     """
-    matches = list(re.finditer(r"\[T(\d+)\]", answer))
-    if not matches:
-        clean = answer.strip()
-        return (
-            [{"claim": clean, "cited_triples": [], "start": 0, "end": len(answer)}]
-            if clean
-            else []
-        )
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for match in re.finditer(r"[.!?]+", answer):
+        end = match.end()
+        trailing = re.match(r"(?:\s*\[T\d+\])+", answer[end:])  # absorb "[T#]" after the period
+        if trailing:
+            end += trailing.end()
+        rest = answer[end:]
+        if rest == "" or rest[:1].isspace():  # real boundary, not "2.5"
+            if answer[start:end].strip():
+                spans.append((start, end))
+            start = end
+    if answer[start:].strip():
+        spans.append((start, len(answer)))
 
     result = []
-    last_boundary = 0
-
-    for match in matches:
-        t_idx = int(match.group(1))
-        chunk = answer[last_boundary : match.start()]
-        clean = re.sub(r"^[\s.,;]+", "", chunk).strip()
-        if clean:
+    for s, e in spans:
+        segment = answer[s:e]
+        cited = list(dict.fromkeys(int(n) for n in re.findall(r"\[T(\d+)\]", segment)))
+        claim = re.sub(r"\[T\d+\]", "", segment)
+        claim = re.sub(r"\s+([.,;:!?])", r"\1", claim)  # drop space left before punctuation
+        claim = re.sub(r"\s+", " ", claim).strip()
+        if claim:
             result.append(
-                {
-                    "claim": clean,
-                    "cited_triples": [t_idx],
-                    "start": last_boundary,
-                    "end": match.end(),
-                }
+                {"claim": claim, "cited_triples": cited, "start": s, "end": e}
             )
-        last_boundary = match.end()
-
-    # trailing uncited text
-    tail = re.sub(r"^[\s.,;]+", "", answer[last_boundary:]).strip()
-    if tail:
-        result.append(
-            {
-                "claim": tail,
-                "cited_triples": [],
-                "start": last_boundary,
-                "end": len(answer),
-            }
-        )
-
     return result
 
 
