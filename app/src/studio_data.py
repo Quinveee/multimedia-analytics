@@ -1,14 +1,10 @@
 """Data provider for the KG Grounding Studio UI.
 
 The UI never talks to the pipeline directly. It consumes a single normalised
-"view model" (see ``build_view_model``) so the layout/callbacks are identical
-whether the data comes from the live pipeline or canned demo data.
-
-Resolution order for ``get_result``:
-  1. MOCK env / mock=True            -> canned Marie-Curie data
-  2. live ``run_pipeline``           -> mapped to the view model
-  3. any failure (KG / Spotlight /   -> canned data (so the UI always renders)
-     LLM not reachable yet)
+"view model" (see ``real_view_model``) so the layout and callbacks stay
+decoupled from the pipeline. ``get_result`` runs the live ``run_pipeline`` and
+maps its result onto the view model; on failure the exception propagates (no
+fallback).
 """
 
 from __future__ import annotations
@@ -186,88 +182,6 @@ def real_view_model(result: dict, model_label: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Canned demo (MOCK=true) — renders the full grounded-answer UI with no backend,
-#  so the citation/evidence frontend can be inspected without Spotlight + LLM.
-# ══════════════════════════════════════════════════════════════════════════════
-def _demo_result() -> dict:
-    """A canned pipeline result that exercises the citation rendering: a
-    multi-fact supported sentence ([T1][T12]), a second multi-fact sentence, and
-    a single-fact *inferred* sentence — so every evidence-cluster state shows."""
-    def node(nid, label, types, depth):
-        return {"id": nid, "label": label, "types": types, "image": None, "_depth": depth}
-
-    nodes = [
-        node("billclinton", "Bill Clinton", ["Person", "OfficeHolder"], 0),
-        node("algore_camp", "Al Gore presidential campaign, 2000", ["Organisation"], 1),
-        node("algore", "Al Gore", ["Person", "OfficeHolder"], 1),
-        node("annlewis", "Ann Lewis", ["Person"], 1),
-        node("demparty", "Democratic Party (United States)", ["Organisation", "PoliticalParty"], 2),
-        node("barneyfrank", "Barney Frank", ["Person"], 2),
-        node("whcomms", "White House Communications Director", ["Office"], 2),
-        node("lieberman", "Joe Lieberman", ["Person"], 2),
-    ]
-
-    def tr(s, sl, pl, o, ol):
-        return {"subject": s, "subject_label": sl, "predicate": pl.replace(" ", ""),
-                "predicate_label": pl, "object": o, "object_label": ol}
-
-    # T1..T12 — the answer cites T1, T3, T5, T9, T12; the rest flesh out the graph
-    triples = [
-        tr("algore_camp", "Al Gore presidential campaign, 2000", "incumbent", "billclinton", "Bill Clinton"),       # T1
-        tr("algore_camp", "Al Gore presidential campaign, 2000", "running mate", "lieberman", "Joe Lieberman"),     # T2
-        tr("algore_camp", "Al Gore presidential campaign, 2000", "candidate", "algore", "Al Gore"),                 # T3
-        tr("algore_camp", "Al Gore presidential campaign, 2000", "party", "demparty", "Democratic Party (United States)"),  # T4
-        tr("algore", "Al Gore", "party", "demparty", "Democratic Party (United States)"),                           # T5
-        tr("algore", "Al Gore", "office", "billclinton", "Bill Clinton"),                                           # T6
-        tr("billclinton", "Bill Clinton", "party", "demparty", "Democratic Party (United States)"),                 # T7
-        tr("lieberman", "Joe Lieberman", "party", "demparty", "Democratic Party (United States)"),                  # T8
-        tr("annlewis", "Ann Lewis", "relative", "barneyfrank", "Barney Frank"),                                     # T9
-        tr("annlewis", "Ann Lewis", "office", "whcomms", "White House Communications Director"),                    # T10
-        tr("billclinton", "Bill Clinton", "running mate", "algore", "Al Gore"),                                     # T11
-        tr("annlewis", "Ann Lewis", "president", "billclinton", "Bill Clinton"),                                    # T12
-    ]
-
-    edges = [{"subject": t["subject"], "object": t["object"],
-              "predicate": t["predicate"], "predicate_label": t["predicate_label"]} for t in triples]
-
-    answer = (
-        "Bill Clinton was the incumbent during Al Gore's 2000 presidential campaign, "
-        "and Ann Lewis served under him in the White House [T1][T12]. "
-        "Al Gore ran as the candidate of the Democratic Party in that election [T3][T5]. "
-        "Ann Lewis is also reported to be a relative of Barney Frank [T9]."
-    )
-    # spans + cited_triples come from the real parser; we only attach labels
-    from src.services.llm import parse_claims
-    parsed = parse_claims(answer)
-    labels = ["supported", "supported", "inferred"]
-    claims_grounded = [{**c, "label": labels[i] if i < len(labels) else "supported"}
-                       for i, c in enumerate(parsed)]
-
-    claims_closed = [
-        {"claim": "Bill Clinton was the incumbent during Al Gore's 2000 campaign.", "label": "supported"},
-        {"claim": "Al Gore won the 2000 presidential election.", "label": "unverifiable"},
-        {"claim": "Ann Lewis served as White House Press Secretary.", "label": "inferred"},
-    ]
-    entities = [
-        {"surface_form": "Al Gore presidential campaign, 2000", "uri": "dbr:Al_Gore_presidential_campaign,_2000"},
-        {"surface_form": "Ann Lewis", "uri": "dbr:Ann_Lewis"},
-        {"surface_form": "Bill Clinton", "uri": "dbr:Bill_Clinton"},
-    ]
-    return {
-        "question": "Who was the incumbent of the Al Gore presidential campaign, 2000, "
-                    "and who was the president associated with Ann Lewis?",
-        "answer_model": "openai/gpt-5 (demo)",
-        "answer_grounded": answer,
-        "abstained": False,
-        "triples": triples,
-        "subgraph": {"nodes": nodes, "edges": edges},
-        "claims_grounded": claims_grounded,
-        "claims_closed": claims_closed,
-        "entities": entities,
-    }
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 #  Public entry point
 # ══════════════════════════════════════════════════════════════════════════════
 async def get_result(question: str, model: str, dataset: str = "DBpedia",
@@ -279,15 +193,6 @@ async def get_result(question: str, model: str, dataset: str = "DBpedia",
     No fallback: if the pipeline fails (KG / Spotlight / LLM unavailable, or any
     runtime error) the exception propagates and the request fails loudly.
     """
-    # MOCK=true → return a canned demo (see _demo_result) so the grounded-answer
-    # UI can be inspected with no KG / Spotlight / LLM backend.
-    from src import config
-    if config.MOCK:
-        vm = real_view_model(_demo_result(), f"{model} · {dataset}")
-        vm["context"] = {"question": question, "model": model, "dataset": dataset,
-                         "verifier": verifier, "subgraph": vm.get("_raw_subgraph")}
-        return vm
-
     result = await run_pipeline(question, answer_model=model, subgraph=subgraph, verifier=verifier)
     vm = real_view_model(result, f"{result.get('answer_model', model)} · {dataset}")
     # context for re-runs (masking): keep the raw subgraph + the call params
