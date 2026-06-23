@@ -52,6 +52,7 @@ LINK_GLYPH = ('<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/>'
               '<path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>')
 FIT_GLYPH = '<path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/>'
 CHEV_GLYPH = '<path d="M9 6l6 6-6 6"/>'
+ARROW_GLYPH = '<path d="M5 12h13M13 6l6 6-6 6"/>'
 
 # verification label → visual style (3-color: supported / inferred / unverifiable)
 LABEL_STYLE = {
@@ -297,45 +298,96 @@ def trace_summary(vm):
 def render_answer(vm):
     children = []
     popovers = []
-    n = 0
+    claim_no = 0
     for tk in vm["tokens"]:
-        cid = tk.get("c")
-        if not cid:
+        cids = tk.get("cites")
+        if not cids:
             children.append(tk["t"])
             continue
-        n += 1
-        span_id = {"type": "gl-cite", "cid": cid}
-        cit = vm["citations"].get(cid, {})
-        st = _lstyle(cit.get("label", "supported"))
-        sup = html.Sup(str(n), style={"color": st["chip"], "background": st["chipbg"]})
-        children.append(html.Span([tk["t"], sup], id=span_id, n_clicks=0,
-                                   className="gl-cite gl-rise", style={"borderBottomColor": st["under"]}))
-        node = next((x for x in vm["nodes"] if x["id"] == cit.get("node")), None)
-        popovers.append(dbc.Popover(_popover_body(node, cit), target=span_id, trigger="hover",
-                                    placement="bottom", style={"maxWidth": "292px"}))
+        # A sentence may draw on several facts. Instead of a pile of loose
+        # superscripts, the claim text is underlined once and the citations are
+        # gathered into a single tinted "evidence cluster" pill — the graph glyph
+        # plus one clickable [T#] per fact. Hovering it shows one combined card
+        # listing every fact the claim is built on.
+        claim_no += 1
+        st = _lstyle(vm["citations"].get(cids[0], {}).get("label", "supported"))
+        cluster_id = f"gl-ev{claim_no}"
+        cluster = _evidence_cluster(vm, cids, st, cluster_id)
+        # keep the pill glued to the claim's last word so it never orphans onto a
+        # line of its own — the head wraps freely, "last word + pill" stay together.
+        us = {"borderBottomColor": st["under"]}
+        head, _, last = tk["t"].rpartition(" ")
+        if head:
+            inner = [html.Span(head + " ", className="gl-claim", style=us),
+                     html.Span([html.Span(last, className="gl-claim", style=us), cluster],
+                               style={"whiteSpace": "nowrap"})]
+        else:
+            inner = [html.Span([html.Span(tk["t"], className="gl-claim", style=us), cluster],
+                               style={"whiteSpace": "nowrap"})]
+        children.append(html.Span(inner, className="gl-rise"))
+        popovers.append(dbc.Popover(_evidence_card(vm, cids), target=cluster_id, trigger="hover focus",
+                                    placement="bottom", style={"maxWidth": "324px"}))
     answer = html.Div(children, id="gl-answer", style={"fontSize": "16.5px", "lineHeight": "1.9", "color": "#343a40"})
     return html.Div([answer, *popovers])
 
 
-def _popover_body(node, cit):
-    img = (html.Img(src=node_img_src(node), style={"width": "40px", "height": "40px", "borderRadius": "9px", "flex": "0 0 auto"})
-           if node else None)
-    label = (node["label"] if node else cit.get("node", ""))
-    body = [html.Div([
-        img,
-        html.Div([
-            html.Div(label, style={"fontSize": "12px", "fontWeight": 700, "color": "#212529"}),
-            html.Div(cit.get("triple", ""), className="mono",
-                     style={"fontSize": "10px", "color": "#495057", "marginTop": "4px", "lineHeight": "1.5"}),
-            *( [html.Div(cit["extra"], style={"fontSize": "10px", "color": "#868e96", "marginTop": "3px"})] if cit.get("extra") else [] ),
-        ], style={"minWidth": 0}),
-    ], style={"padding": "10px 11px", "display": "flex", "gap": "10px", "alignItems": "flex-start"}),
-        html.Div([html.Span([icon(LINK_GLYPH, 11, "#adb5bd", 2, style={"display": "inline-block"}), " ", cit.get("src", "")],
-                            style={"display": "flex", "alignItems": "center", "gap": "5px"}),
-                  html.Span("click → open graph", style={"color": "#1971c2", "fontWeight": 600})],
-                 style={"padding": "7px 11px", "background": "#f8f9fa", "fontSize": "10px", "color": "#868e96",
-                        "display": "flex", "alignItems": "center", "justifyContent": "space-between"})]
-    return html.Div(body, style={"width": "272px"})
+def _evidence_cluster(vm, cids, st, cluster_id):
+    """Inline evidence pill: the KG glyph + one clickable number per cited fact,
+    middot-separated, tinted by the claim's verification state. Each number keeps
+    its own ``gl-cite`` id so clicking it still focuses that fact in the graph."""
+    inner = [icon(GRAPH_GLYPH, 12, st["chip"], 2.1,
+                  style={"display": "inline-block", "marginRight": "5px", "opacity": ".9"})]
+    for i, cid in enumerate(cids):
+        cit = vm["citations"].get(cid, {})
+        cst = _lstyle(cit.get("label", "supported"))
+        if i:
+            inner.append(html.Span("·", className="gl-evdot"))
+        inner.append(html.Span(str(cit.get("num", "")), id={"type": "gl-cite", "cid": cid},
+                               n_clicks=0, className="gl-evnum", style={"color": cst["chip"]}))
+    return html.Span(inner, id=cluster_id, tabIndex=0, className="gl-evcluster",
+                     style={"background": st["chipbg"], "borderColor": st["under"], "color": st["chip"]})
+
+
+def _evidence_card(vm, cids):
+    """The combined hover card: one row per fact (node tile · subject—pred→object ·
+    [T#] · state), so a multi-citation claim is read as one body of evidence."""
+    n = len(cids)
+    rows = []
+    for cid in cids:
+        cit = vm["citations"].get(cid, {})
+        st = _lstyle(cit.get("label", "supported"))
+        node = next((x for x in vm["nodes"] if x["id"] == cit.get("node")), None)
+        tile = html.Img(src=node_img_src(node), style={
+            "width": "34px", "height": "34px", "borderRadius": "8px", "flex": "0 0 auto",
+            **({} if (node or {}).get("has_image") else {"border": "1.5px dashed #ced4da"})}) if node else None
+        # subject —predicate→ object (falls back to the joined triple text)
+        if cit.get("p_label") or cit.get("o_label"):
+            triple = html.Div([
+                html.Span(cit.get("s_label", ""), style={"color": "#868e96"}),
+                html.Span(f" {cit.get('p_label', '')} ", style={"color": st["chip"], "fontWeight": 600}),
+                icon(ARROW_GLYPH, 9, st["chip"], 2.4, style={"display": "inline-block", "verticalAlign": "middle"}),
+                html.Span(f" {cit.get('o_label', '')}", style={"color": "#212529", "fontWeight": 600}),
+            ], className="mono", style={"fontSize": "10px", "lineHeight": "1.55"})
+        else:
+            triple = html.Div(cit.get("triple", ""), className="mono",
+                              style={"fontSize": "10px", "color": "#343a40", "lineHeight": "1.55"})
+        state = html.Span([label_icon(cit.get("label", "supported"), 11), " ", (st["tag"] or "supported")],
+                          style={"display": "inline-flex", "alignItems": "center", "gap": "3px",
+                                 "fontSize": "9.5px", "fontWeight": 700, "color": st["color"], "marginTop": "3px"})
+        num = html.Span(str(cit.get("num", "")), className="mono", style={
+            "fontSize": "10px", "fontWeight": 600, "color": st["chip"], "background": st["chipbg"],
+            "borderRadius": "5px", "padding": "1px 5px", "flex": "0 0 auto", "alignSelf": "flex-start"})
+        rows.append(html.Div([tile, html.Div([triple, state], style={"minWidth": 0, "flex": 1}), num],
+                             className="gl-evrow"))
+    header = html.Div([icon(GRAPH_GLYPH, 12, "#868e96", 2, style={"display": "inline-block"}),
+                       html.Span(f"backs this claim · {n} fact{'s' if n != 1 else ''}",
+                                 style={"marginLeft": "5px"})], className="gl-evhdr")
+    footer = html.Div([icon(LINK_GLYPH, 11, "#adb5bd", 2, style={"display": "inline-block"}),
+                       html.Span("Knowledge graph", style={"marginLeft": "5px"}),
+                       html.Span("click a number → open graph",
+                                 style={"marginLeft": "auto", "color": "#1971c2", "fontWeight": 600})],
+                      className="gl-evftr")
+    return html.Div([header, *rows, footer], style={"width": "302px"})
 
 
 def render_actions(played):

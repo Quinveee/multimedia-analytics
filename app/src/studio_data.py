@@ -86,13 +86,18 @@ def real_view_model(result: dict, model_label: str) -> dict:
         for e in sub["edges"]
     ]
 
-    # grounded answer → tokens + citation map, driven by claim char-spans
+    # grounded answer → tokens + citation map, driven by claim char-spans.
+    # A sentence may draw on several facts ("... Ann Lewis [T1][T12].") — emit one
+    # citation chip per cited triple so every fact is shown and individually
+    # inspectable, not just the first. (The parser collects all [T#] per sentence;
+    # the mapping below must not collapse them back to one.)
     answer = result.get("answer_grounded", "")
     claims = sorted(result.get("claims_grounded", []), key=lambda c: c.get("start") or 0)
     tokens: list[dict] = []
     citations: dict = {}
     cursor = 0
-    cite_i = 0
+    cite_i = 0      # unique id counter across all citation chips
+    n_claims = 0    # grounded (cited) claims — drives the "grounded N claims" summary
     for c in claims:
         s, e = c.get("start"), c.get("end")
         if s is None or e is None:
@@ -101,22 +106,31 @@ def real_view_model(result: dict, model_label: str) -> dict:
             tokens.append({"t": answer[cursor:s]})
         text = _CITE_RE.sub("", answer[s:e]).strip()
         cited = c.get("cited_triples") or []
+        label = c.get("label", "supported")
         if cited and text:
-            cite_i += 1
-            cid = f"C{cite_i}"
-            t_idx = cited[0]
-            t = triples[t_idx - 1] if 1 <= t_idx <= len(triples) else None
-            # point the citation at the object node and remember the backing edge
-            obj = t["object"] if t else (nodes[0]["id"] if nodes else "")
-            citations[cid] = {
-                "node": obj,
-                "triple": (f"{t['subject_label']} — {t['predicate_label']} — {t['object_label']}"
-                           if t else text),
-                "src": "Knowledge graph",
-                "edges": [(t["subject"], t["object"])] if t else [],
-                "label": c.get("label", "supported"),
-            }
-            tokens.append({"t": text, "c": cid})
+            n_claims += 1
+            cids = []
+            for t_idx in cited:
+                cite_i += 1
+                cid = f"C{cite_i}"
+                t = triples[t_idx - 1] if 1 <= t_idx <= len(triples) else None
+                # point the citation at the object node and remember the backing edge
+                obj = t["object"] if t else (nodes[0]["id"] if nodes else "")
+                citations[cid] = {
+                    "num": t_idx,   # the [T#] shown as the citation marker
+                    "node": obj,
+                    "triple": (f"{t['subject_label']} — {t['predicate_label']} — {t['object_label']}"
+                               if t else text),
+                    # subject —predicate→ object, for the evidence card's arrow form
+                    "s_label": t["subject_label"] if t else "",
+                    "p_label": t["predicate_label"] if t else "",
+                    "o_label": t["object_label"] if t else text,
+                    "src": "Knowledge graph",
+                    "edges": [(t["subject"], t["object"])] if t else [],
+                    "label": label,
+                }
+                cids.append(cid)
+            tokens.append({"t": text, "cites": cids})
         elif text:
             tokens.append({"t": text})
         cursor = e
@@ -165,8 +179,90 @@ def real_view_model(result: dict, model_label: str) -> dict:
         "counts": {
             "entities": len(nodes),
             "mentions": len(link_chips),
-            "claims": cite_i,
+            "claims": n_claims,
         },
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Canned demo (MOCK=true) — renders the full grounded-answer UI with no backend,
+#  so the citation/evidence frontend can be inspected without Spotlight + LLM.
+# ══════════════════════════════════════════════════════════════════════════════
+def _demo_result() -> dict:
+    """A canned pipeline result that exercises the citation rendering: a
+    multi-fact supported sentence ([T1][T12]), a second multi-fact sentence, and
+    a single-fact *inferred* sentence — so every evidence-cluster state shows."""
+    def node(nid, label, types, depth):
+        return {"id": nid, "label": label, "types": types, "image": None, "_depth": depth}
+
+    nodes = [
+        node("billclinton", "Bill Clinton", ["Person", "OfficeHolder"], 0),
+        node("algore_camp", "Al Gore presidential campaign, 2000", ["Organisation"], 1),
+        node("algore", "Al Gore", ["Person", "OfficeHolder"], 1),
+        node("annlewis", "Ann Lewis", ["Person"], 1),
+        node("demparty", "Democratic Party (United States)", ["Organisation", "PoliticalParty"], 2),
+        node("barneyfrank", "Barney Frank", ["Person"], 2),
+        node("whcomms", "White House Communications Director", ["Office"], 2),
+        node("lieberman", "Joe Lieberman", ["Person"], 2),
+    ]
+
+    def tr(s, sl, pl, o, ol):
+        return {"subject": s, "subject_label": sl, "predicate": pl.replace(" ", ""),
+                "predicate_label": pl, "object": o, "object_label": ol}
+
+    # T1..T12 — the answer cites T1, T3, T5, T9, T12; the rest flesh out the graph
+    triples = [
+        tr("algore_camp", "Al Gore presidential campaign, 2000", "incumbent", "billclinton", "Bill Clinton"),       # T1
+        tr("algore_camp", "Al Gore presidential campaign, 2000", "running mate", "lieberman", "Joe Lieberman"),     # T2
+        tr("algore_camp", "Al Gore presidential campaign, 2000", "candidate", "algore", "Al Gore"),                 # T3
+        tr("algore_camp", "Al Gore presidential campaign, 2000", "party", "demparty", "Democratic Party (United States)"),  # T4
+        tr("algore", "Al Gore", "party", "demparty", "Democratic Party (United States)"),                           # T5
+        tr("algore", "Al Gore", "office", "billclinton", "Bill Clinton"),                                           # T6
+        tr("billclinton", "Bill Clinton", "party", "demparty", "Democratic Party (United States)"),                 # T7
+        tr("lieberman", "Joe Lieberman", "party", "demparty", "Democratic Party (United States)"),                  # T8
+        tr("annlewis", "Ann Lewis", "relative", "barneyfrank", "Barney Frank"),                                     # T9
+        tr("annlewis", "Ann Lewis", "office", "whcomms", "White House Communications Director"),                    # T10
+        tr("billclinton", "Bill Clinton", "running mate", "algore", "Al Gore"),                                     # T11
+        tr("annlewis", "Ann Lewis", "president", "billclinton", "Bill Clinton"),                                    # T12
+    ]
+
+    edges = [{"subject": t["subject"], "object": t["object"],
+              "predicate": t["predicate"], "predicate_label": t["predicate_label"]} for t in triples]
+
+    answer = (
+        "Bill Clinton was the incumbent during Al Gore's 2000 presidential campaign, "
+        "and Ann Lewis served under him in the White House [T1][T12]. "
+        "Al Gore ran as the candidate of the Democratic Party in that election [T3][T5]. "
+        "Ann Lewis is also reported to be a relative of Barney Frank [T9]."
+    )
+    # spans + cited_triples come from the real parser; we only attach labels
+    from src.services.llm import parse_claims
+    parsed = parse_claims(answer)
+    labels = ["supported", "supported", "inferred"]
+    claims_grounded = [{**c, "label": labels[i] if i < len(labels) else "supported"}
+                       for i, c in enumerate(parsed)]
+
+    claims_closed = [
+        {"claim": "Bill Clinton was the incumbent during Al Gore's 2000 campaign.", "label": "supported"},
+        {"claim": "Al Gore won the 2000 presidential election.", "label": "unverifiable"},
+        {"claim": "Ann Lewis served as White House Press Secretary.", "label": "inferred"},
+    ]
+    entities = [
+        {"surface_form": "Al Gore presidential campaign, 2000", "uri": "dbr:Al_Gore_presidential_campaign,_2000"},
+        {"surface_form": "Ann Lewis", "uri": "dbr:Ann_Lewis"},
+        {"surface_form": "Bill Clinton", "uri": "dbr:Bill_Clinton"},
+    ]
+    return {
+        "question": "Who was the incumbent of the Al Gore presidential campaign, 2000, "
+                    "and who was the president associated with Ann Lewis?",
+        "answer_model": "openai/gpt-5 (demo)",
+        "answer_grounded": answer,
+        "abstained": False,
+        "triples": triples,
+        "subgraph": {"nodes": nodes, "edges": edges},
+        "claims_grounded": claims_grounded,
+        "claims_closed": claims_closed,
+        "entities": entities,
     }
 
 
@@ -179,9 +275,19 @@ async def get_result(question: str, model: str, dataset: str = "Wikidata-MM",
     an OpenRouter model id (e.g. "openai/gpt-4o"). ``verifier`` is "llm"|"nli".
     ``subgraph`` (if given) re-runs against a pre-filtered subgraph (masking).
 
-    No fallback: if the pipeline fails (KG / Spotlight / LLM unavailable, or any
-    runtime error) the exception propagates and the request fails loudly.
+    With ``MOCK=true`` a canned demo result is returned instead, so the UI (and
+    in particular the citation/evidence rendering) can be inspected with no KG /
+    Spotlight / LLM backend. Otherwise: no fallback — if the pipeline fails the
+    exception propagates and the request fails loudly.
     """
+    from src import config
+
+    if config.MOCK:
+        vm = real_view_model(_demo_result(), f"{model} · {dataset}")
+        vm["context"] = {"question": question, "model": model, "dataset": dataset,
+                         "verifier": verifier, "subgraph": vm.get("_raw_subgraph")}
+        return vm
+
     from src.pipeline import run_pipeline
 
     result = await run_pipeline(question, answer_model=model, subgraph=subgraph, verifier=verifier)
