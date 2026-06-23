@@ -447,10 +447,7 @@ def filter_chips(active):
 
 def render_compare(vm, active=None):
     active = set(active) if active is not None else set(ALL_LABELS)
-    # Closed-book has no KG context, so nothing it claims is grounded — every
-    # closed claim is unverifiable by definition (rate is always 100%).
-    closed_claims = [{**x, "label": "unverifiable"} for x in vm["closed_claims"]]
-    cbad, cn, crate = _claim_stats(closed_claims)
+    cbad, cn, crate = _claim_stats(vm["closed_claims"])
     gbad, gn, grate = _claim_stats(vm["grounded_claims"])
 
     def claim_row(x, grounded):
@@ -493,7 +490,7 @@ def render_compare(vm, active=None):
     return html.Div([
         compare_header(crate, grate, vm.get("abstained")),
         filter_chips(active),
-        html.Div([column(closed_claims, False, cbad, cn, crate),
+        html.Div([column(vm["closed_claims"], False, cbad, cn, crate),
                   column(vm["grounded_claims"], True, gbad, gn, grate)],
                  style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "16px"}),
     ])
@@ -527,7 +524,7 @@ HEADER = html.Header([
         "background": "linear-gradient(135deg,#228be6,#4263eb)", "display": "flex",
         "alignItems": "center", "justifyContent": "center", "boxShadow": "0 2px 6px rgba(34,139,230,.32)"}),
     html.Span("KG Grounding Studio", style={"fontWeight": 800, "fontSize": "14px", "letterSpacing": "-.2px"}),
-    html.Span("Wikidata · multimodal KG", style={"fontSize": "11px", "color": "#adb5bd", "fontWeight": 600,
+    html.Span("DBpedia · multimodal KG", style={"fontSize": "11px", "color": "#adb5bd", "fontWeight": 600,
               "padding": "2px 8px", "background": "#f8f9fa", "borderRadius": "20px"}),
     html.Div(style={"flex": 1}),
     html.Span("Multimodal KG grounding · research demo", style={"fontSize": "11px", "color": "#ced4da", "fontWeight": 600}),
@@ -711,7 +708,7 @@ def on_submit(_n, _ns, _ex, q, model, verifier):
         q = EX_TEXT.get(trig["i"], q)
     q = (q or "").strip() or EX_TEXT[0]
     model = model or "GPT-4o"
-    ds = "Wikidata-MM"
+    ds = "DBpedia"
     hero_hidden = {"display": "none"}
     results_shown = {"display": "flex", "flex": "1 1 auto", "minHeight": 0, "flexDirection": "column", "overflowY": "auto"}
     return ({"q": q, "model": model, "ds": ds, "verifier": verifier or "llm"}, None, True, 0,
@@ -753,7 +750,7 @@ async def on_mask(clicks, vm):
         "nodes": [n for n in sub["nodes"] if n["id"] != node_id],
         "edges": [e for e in sub["edges"] if e["subject"] != node_id and e["object"] != node_id],
     }
-    new_vm = await data.get_result(cx["question"], cx["model"], cx.get("dataset", "Wikidata-MM"),
+    new_vm = await data.get_result(cx["question"], cx["model"], cx.get("dataset", "DBpedia"),
                                    verifier=cx.get("verifier"), subgraph=filtered)
     return new_vm, 0, False  # replay the reveal with the masked result
 

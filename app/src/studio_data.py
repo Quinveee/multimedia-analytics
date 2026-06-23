@@ -174,7 +174,7 @@ def real_view_model(result: dict, model_label: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 #  Public entry point
 # ══════════════════════════════════════════════════════════════════════════════
-async def get_result(question: str, model: str, dataset: str = "Wikidata-MM",
+async def get_result(question: str, model: str, dataset: str = "DBpedia",
                      verifier: str = None, subgraph: dict = None) -> dict:
     """Return a view model for ``question`` from the live pipeline. ``model`` is
     an OpenRouter model id (e.g. "openai/gpt-4o"). ``verifier`` is "llm"|"nli".
