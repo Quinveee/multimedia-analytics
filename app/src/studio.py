@@ -576,7 +576,7 @@ HEADER = html.Header([
         "background": "linear-gradient(135deg,#228be6,#4263eb)", "display": "flex",
         "alignItems": "center", "justifyContent": "center", "boxShadow": "0 2px 6px rgba(34,139,230,.32)"}),
     html.Span("KG Grounding Studio", style={"fontWeight": 800, "fontSize": "14px", "letterSpacing": "-.2px"}),
-    html.Span("Wikidata · multimodal KG", style={"fontSize": "11px", "color": "#adb5bd", "fontWeight": 600,
+    html.Span("DBpedia · multimodal KG", style={"fontSize": "11px", "color": "#adb5bd", "fontWeight": 600,
               "padding": "2px 8px", "background": "#f8f9fa", "borderRadius": "20px"}),
     html.Div(style={"flex": 1}),
     html.Span("Multimodal KG grounding · research demo", style={"fontSize": "11px", "color": "#ced4da", "fontWeight": 600}),
@@ -610,9 +610,6 @@ HERO = html.Div([html.Div([
         dcc.Dropdown(id="gl-model", clearable=False, value=DEFAULT_MODEL_VALUE,
                      options=MODEL_OPTIONS, searchable=True, placeholder="Search models…",
                      style={"width": "260px", "fontSize": "12px"}),
-        dcc.Dropdown(id="gl-ds", clearable=False, value="Wikidata-MM",
-                     options=["Wikidata-MM", "DBpedia-15K", "WikiKG-Vision"],
-                     style={"width": "160px", "fontSize": "12px"}),
         dcc.Dropdown(id="gl-verifier", clearable=False, value=config.VERIFIER,
                      options=[{"label": "Verify: LLM judge", "value": "llm"},
                               {"label": "Verify: NLI model", "value": "nli"}],
@@ -750,11 +747,11 @@ def first_citation(vm):
     Output("gl-actions", "children"),
     Input("gl-submit", "n_clicks"), Input("gl-q", "n_submit"),
     Input({"type": "gl-ex", "i": ALL}, "n_clicks"),
-    State("gl-q", "value"), State("gl-model", "value"), State("gl-ds", "value"),
+    State("gl-q", "value"), State("gl-model", "value"),
     State("gl-verifier", "value"),
     prevent_initial_call=True,
 )
-def on_submit(_n, _ns, _ex, q, model, ds, verifier):
+def on_submit(_n, _ns, _ex, q, model, verifier):
     """Instant: jump to the results view with the pipeline shown 'running'. The
     heavy run_pipeline happens in on_run (triggered by gl-pending), so the click
     never freezes the UI."""
@@ -763,7 +760,7 @@ def on_submit(_n, _ns, _ex, q, model, ds, verifier):
         q = EX_TEXT.get(trig["i"], q)
     q = (q or "").strip() or EX_TEXT[0]
     model = model or "GPT-4o"
-    ds = ds or "Wikidata-MM"
+    ds = "DBpedia"
     hero_hidden = {"display": "none"}
     results_shown = {"display": "flex", "flex": "1 1 auto", "minHeight": 0, "flexDirection": "column", "overflowY": "auto"}
     return ({"q": q, "model": model, "ds": ds, "verifier": verifier or "llm"}, None, True, 0,
@@ -781,8 +778,6 @@ def on_submit(_n, _ns, _ex, q, model, ds, verifier):
 async def on_run(pending):
     if not pending:
         return no_update, no_update, no_update
-    # Dash runs callbacks inside an event loop, so await the async pipeline
-    # directly (its LLM calls run in parallel internally).
     vm = await data.get_result(pending["q"], pending["model"], pending["ds"],
                                verifier=pending.get("verifier"))
     return vm, False, 0  # data ready → arm the staged reveal (on_tick)
@@ -807,7 +802,7 @@ async def on_mask(clicks, vm):
         "nodes": [n for n in sub["nodes"] if n["id"] != node_id],
         "edges": [e for e in sub["edges"] if e["subject"] != node_id and e["object"] != node_id],
     }
-    new_vm = await data.get_result(cx["question"], cx["model"], cx.get("dataset", "Wikidata-MM"),
+    new_vm = await data.get_result(cx["question"], cx["model"], cx.get("dataset", "DBpedia"),
                                    verifier=cx.get("verifier"), subgraph=filtered)
     return new_vm, 0, False  # replay the reveal with the masked result
 
