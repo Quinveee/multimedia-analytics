@@ -447,7 +447,10 @@ def filter_chips(active):
 
 def render_compare(vm, active=None):
     active = set(active) if active is not None else set(ALL_LABELS)
-    cbad, cn, crate = _claim_stats(vm["closed_claims"])
+    # Closed-book has no KG context, so nothing it claims is grounded — every
+    # closed claim is unverifiable by definition (rate is always 100%).
+    closed_claims = [{**x, "label": "unverifiable"} for x in vm["closed_claims"]]
+    cbad, cn, crate = _claim_stats(closed_claims)
     gbad, gn, grate = _claim_stats(vm["grounded_claims"])
 
     def claim_row(x, grounded):
@@ -490,7 +493,7 @@ def render_compare(vm, active=None):
     return html.Div([
         compare_header(crate, grate, vm.get("abstained")),
         filter_chips(active),
-        html.Div([column(vm["closed_claims"], False, cbad, cn, crate),
+        html.Div([column(closed_claims, False, cbad, cn, crate),
                   column(vm["grounded_claims"], True, gbad, gn, grate)],
                  style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "16px"}),
     ])
@@ -558,9 +561,6 @@ HERO = html.Div([html.Div([
         dcc.Dropdown(id="gl-model", clearable=False, value=DEFAULT_MODEL_VALUE,
                      options=MODEL_OPTIONS, searchable=True, placeholder="Search models…",
                      style={"width": "260px", "fontSize": "12px"}),
-        dcc.Dropdown(id="gl-ds", clearable=False, value="Wikidata-MM",
-                     options=["Wikidata-MM", "DBpedia-15K", "WikiKG-Vision"],
-                     style={"width": "160px", "fontSize": "12px"}),
         dcc.Dropdown(id="gl-verifier", clearable=False, value=config.VERIFIER,
                      options=[{"label": "Verify: LLM judge", "value": "llm"},
                               {"label": "Verify: NLI model", "value": "nli"}],
@@ -698,11 +698,11 @@ def first_citation(vm):
     Output("gl-actions", "children"),
     Input("gl-submit", "n_clicks"), Input("gl-q", "n_submit"),
     Input({"type": "gl-ex", "i": ALL}, "n_clicks"),
-    State("gl-q", "value"), State("gl-model", "value"), State("gl-ds", "value"),
+    State("gl-q", "value"), State("gl-model", "value"),
     State("gl-verifier", "value"),
     prevent_initial_call=True,
 )
-def on_submit(_n, _ns, _ex, q, model, ds, verifier):
+def on_submit(_n, _ns, _ex, q, model, verifier):
     """Instant: jump to the results view with the pipeline shown 'running'. The
     heavy run_pipeline happens in on_run (triggered by gl-pending), so the click
     never freezes the UI."""
@@ -711,7 +711,7 @@ def on_submit(_n, _ns, _ex, q, model, ds, verifier):
         q = EX_TEXT.get(trig["i"], q)
     q = (q or "").strip() or EX_TEXT[0]
     model = model or "GPT-4o"
-    ds = ds or "Wikidata-MM"
+    ds = "Wikidata-MM"
     hero_hidden = {"display": "none"}
     results_shown = {"display": "flex", "flex": "1 1 auto", "minHeight": 0, "flexDirection": "column", "overflowY": "auto"}
     return ({"q": q, "model": model, "ds": ds, "verifier": verifier or "llm"}, None, True, 0,
@@ -729,8 +729,6 @@ def on_submit(_n, _ns, _ex, q, model, ds, verifier):
 async def on_run(pending):
     if not pending:
         return no_update, no_update, no_update
-    # Dash runs callbacks inside an event loop, so await the async pipeline
-    # directly (its LLM calls run in parallel internally).
     vm = await data.get_result(pending["q"], pending["model"], pending["ds"],
                                verifier=pending.get("verifier"))
     return vm, False, 0  # data ready → arm the staged reveal (on_tick)

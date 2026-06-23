@@ -16,7 +16,8 @@ from __future__ import annotations
 import os
 import re
 
-# ── kind → palette key (mirrors the design's `pal`/`stColor`) ──────────────────
+from src.pipeline import run_pipeline
+
 KIND_COLORS = {
     "person": ("#4263eb", "#748ffc"),
     "element": ("#0c8599", "#3bc9db"),
@@ -182,8 +183,6 @@ async def get_result(question: str, model: str, dataset: str = "Wikidata-MM",
     No fallback: if the pipeline fails (KG / Spotlight / LLM unavailable, or any
     runtime error) the exception propagates and the request fails loudly.
     """
-    from src.pipeline import run_pipeline
-
     result = await run_pipeline(question, answer_model=model, subgraph=subgraph, verifier=verifier)
     vm = real_view_model(result, f"{result.get('answer_model', model)} · {dataset}")
     # context for re-runs (masking): keep the raw subgraph + the call params
