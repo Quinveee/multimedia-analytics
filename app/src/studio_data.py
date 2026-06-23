@@ -16,7 +16,8 @@ from __future__ import annotations
 import os
 import re
 
-# ── kind → palette key (mirrors the design's `pal`/`stColor`) ──────────────────
+from src.pipeline import run_pipeline
+
 KIND_COLORS = {
     "person": ("#4263eb", "#748ffc"),
     "element": ("#0c8599", "#3bc9db"),
@@ -269,26 +270,23 @@ def _demo_result() -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 #  Public entry point
 # ══════════════════════════════════════════════════════════════════════════════
-async def get_result(question: str, model: str, dataset: str = "Wikidata-MM",
+async def get_result(question: str, model: str, dataset: str = "DBpedia",
                      verifier: str = None, subgraph: dict = None) -> dict:
     """Return a view model for ``question`` from the live pipeline. ``model`` is
     an OpenRouter model id (e.g. "openai/gpt-4o"). ``verifier`` is "llm"|"nli".
     ``subgraph`` (if given) re-runs against a pre-filtered subgraph (masking).
 
-    With ``MOCK=true`` a canned demo result is returned instead, so the UI (and
-    in particular the citation/evidence rendering) can be inspected with no KG /
-    Spotlight / LLM backend. Otherwise: no fallback — if the pipeline fails the
-    exception propagates and the request fails loudly.
+    No fallback: if the pipeline fails (KG / Spotlight / LLM unavailable, or any
+    runtime error) the exception propagates and the request fails loudly.
     """
+    # MOCK=true → return a canned demo (see _demo_result) so the grounded-answer
+    # UI can be inspected with no KG / Spotlight / LLM backend.
     from src import config
-
     if config.MOCK:
         vm = real_view_model(_demo_result(), f"{model} · {dataset}")
         vm["context"] = {"question": question, "model": model, "dataset": dataset,
                          "verifier": verifier, "subgraph": vm.get("_raw_subgraph")}
         return vm
-
-    from src.pipeline import run_pipeline
 
     result = await run_pipeline(question, answer_model=model, subgraph=subgraph, verifier=verifier)
     vm = real_view_model(result, f"{result.get('answer_model', model)} · {dataset}")
