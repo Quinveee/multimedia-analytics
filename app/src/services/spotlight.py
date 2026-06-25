@@ -45,7 +45,9 @@ def _llm_entities(question: str) -> list[dict]:
         "dbr:Princeton_University\n\n"
         f"Question: {question}"
     )
-    raw = _chat([{"role": "user", "content": prompt}], model=config.CLAIMS_MODEL)
+    raw = _chat(
+        [{"role": "user", "content": prompt}], model=config.ENTITY_EXTRACTION_MODEL
+    )
     results = []
     for line in raw.splitlines():
         line = line.strip()

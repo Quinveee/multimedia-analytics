@@ -20,8 +20,9 @@ SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate"
 # ── LLM (all models served via OpenRouter) ────────────────────────────────────
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-4o")
 ANSWER_MODEL = os.getenv("ANSWER_MODEL", DEFAULT_MODEL)
-CLAIMS_MODEL = os.getenv("CLAIMS_MODEL", DEFAULT_MODEL)
-VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", DEFAULT_MODEL)
+BACKEND_MODEL = os.getenv("BACKEND_MODEL", "openai/gpt-5")
+ENTITY_EXTRACTION_MODEL = os.getenv("ENTITY_EXTRACTION_MODEL", BACKEND_MODEL)
+VERIFIER_MODEL = os.getenv("VERIFIER_MODEL", BACKEND_MODEL)
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
 # API keys
@@ -45,7 +46,11 @@ def resolve_llm(model: str) -> tuple[str, str, str, str]:
     id such as "openai/gpt-4o" or "anthropic/claude-3.7-sonnet" (an optional
     "openrouter/" prefix is stripped).
     """
-    name = model[len("openrouter/"):] if model.lower().startswith("openrouter/") else model
+    name = (
+        model[len("openrouter/") :]
+        if model.lower().startswith("openrouter/")
+        else model
+    )
     return "openrouter", OPENROUTER_BASE_URL, OPENROUTER_API_KEY, name
 
 

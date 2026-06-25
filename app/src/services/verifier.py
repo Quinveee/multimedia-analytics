@@ -22,15 +22,33 @@ async def _verify_llm(claim: str, triples: str) -> str:
     Classify a claim against triple text using an LLM. Returns supported/inferred/unverifiable.
     """
     prompt = (
-        f"Given these knowledge graph triples:\n{triples}\n\n"
-        f"Classify the following claim as one of: supported, inferred, unverifiable.\n"
-        f"- supported: directly stated in the triples\n"
-        f"- inferred: reasonable conclusion from the triples but not explicit\n"
-        f"- unverifiable: cannot be determined from the triples\n\n"
-        f"Claim: {claim}\n\n"
-        f"Reply with only one word: supported, inferred, or unverifiable."
+        "Classify a claim against knowledge graph triples as: supported, inferred, or unverifiable.\n"
+        "- supported: the claim is directly stated or clearly expressed by the triples (rephrasing counts as supported)\n"
+        "- inferred: a reasonable conclusion from the triples but not explicitly stated\n"
+        "- unverifiable: cannot be determined from the triples at all\n\n"
+        "Examples:\n"
+        "Triples: [T1] Ann Lewis birthPlace Jersey City, New Jersey | [T2] Ann Lewis birthPlace United States\n"
+        "Claim: Ann Lewis was born in Jersey City, New Jersey, in the United States.\n"
+        "Answer: supported\n\n"
+        "Triples: [T1] Ann Lewis spouse Gerald A. Lewis\n"
+        "Claim: Ann Lewis is married to Gerald A. Lewis.\n"
+        "Answer: supported\n\n"
+        "Triples: [T1] Ann Lewis office Counselor to the President | [T2] Ann Lewis president Bill Clinton\n"
+        "Claim: Ann Lewis served as Counselor to the President under Bill Clinton.\n"
+        "Answer: supported\n\n"
+        "Triples: [T1] Marie Curie birthPlace Warsaw | [T2] Marie Curie award Nobel Prize in Physics\n"
+        "Claim: Marie Curie was one of the greatest scientists of all time.\n"
+        "Answer: inferred\n\n"
+        "Triples: [T1] Marie Curie birthPlace Warsaw\n"
+        "Claim: Marie Curie enjoyed living in Warsaw.\n"
+        "Answer: unverifiable\n\n"
+        f"Triples: {triples}\n"
+        f"Claim: {claim}\n"
+        "Answer:"
     )
-    raw = await _achat([{"role": "user", "content": prompt}], model=config.VERIFIER_MODEL)
+    raw = await _achat(
+        [{"role": "user", "content": prompt}], model=config.VERIFIER_MODEL
+    )
     label = raw.lower().strip()
     return (
         label if label in ("supported", "inferred", "unverifiable") else "unverifiable"

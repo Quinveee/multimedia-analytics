@@ -53,6 +53,7 @@ async def run_pipeline(
     # Rank the triples in the subgraph and verbalise them for the LLM
     triples = rank_triples(subgraph, question)
     triples_prompt = verbalise_triples(subgraph, question)
+    print(f"[pipeline] triples prompt:\n{triples_prompt or '(none)'}")
 
     # Prepare images for entities that have them (seed entities only). The order
     # here defines the [I#] citation ids the model uses, so keep paths, labels and
