@@ -17,6 +17,20 @@ python src/main.py
 
 After the Dash server is running open http://127.0.0.1:8050/ on your browser.
 
+### KG Grounding Studio UI
+`src/studio.py` is the designed grounding UI (hero search → animated grounding
+pipeline → grounded answer with inline citations → closed-book vs grounded
+compare → knowledge-subgraph drawer). Run it from the `app/` directory:
+```
+python -m src.studio                 # → http://127.0.0.1:8050/
+```
+It renders against the live `run_pipeline` when the KG / Spotlight / LLM are
+reachable, and automatically falls back to canned demo data otherwise. To force
+the demo data (e.g. before the backend is up):
+```
+STUDIO_MOCK=true python -m src.studio
+```
+
 
 
 ## Snellius

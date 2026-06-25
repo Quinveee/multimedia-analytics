@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 
 from src import config
 from src.services.kg import KG, rank_triples, verbalise_triples
@@ -12,8 +13,11 @@ from src.services.spotlight import link_entities
 from src.services.verifier import verify_claims
 
 
-def run_pipeline(
-    question: str, answer_model: str = None, subgraph: dict = None
+ABSTAIN_MARKER = "do not contain enough information"
+
+
+async def run_pipeline(
+    question: str, answer_model: str = None, subgraph: dict = None, verifier: str = None
 ) -> dict:
     """Run the full grounding pipeline for a question.
 
@@ -51,30 +55,32 @@ def run_pipeline(
     triples_prompt = verbalise_triples(subgraph, question)
 
     # Prepare image paths for entities that have associated images
-    kg_dir = config.KG_PATH.parent
+    kg_dir = config.KG_PATH.parent.resolve()
     image_paths = [
         str(kg_dir / n["image"])
         for n in subgraph["nodes"]
         if n.get("image") and n["id"] in entity_uris
     ]
 
-    # Generate answers using the specified model
-    closed = answer_closed(question, model=answer_model)
-    grounded = (
-        answer_grounded(
-            question,
-            triples_prompt,
-            model=answer_model,
-            image_paths=image_paths or None,
+    # Generate the closed-book and grounded answers concurrently (independent
+    # async LLM calls via AsyncOpenAI → truly non-blocking, run in parallel).
+    answer_tasks = [answer_closed(question, answer_model)]
+    if triples_prompt:
+        answer_tasks.append(
+            answer_grounded(question, triples_prompt, answer_model, image_paths or None)
         )
-        if triples_prompt
-        else closed
-    )
+    answers = await asyncio.gather(*answer_tasks)
+    closed = answers[0]
+    grounded = answers[1] if triples_prompt else closed
 
-    # Verify the claims in both the grounded and closed-book answers against the triples prompt
-    claims_grounded = verify_claims(parse_claims(grounded), triples_prompt)
-    claims_closed = verify_claims(
-        parse_sentences(closed), triples_prompt, verify_uncited=True
+    # Did the grounded model abstain (declined for lack of facts)?
+    abstained = bool(triples_prompt) and ABSTAIN_MARKER in grounded.lower()
+
+    # Verify grounded and closed-book claims concurrently (each also fans out
+    # its per-claim checks internally). Skip grounded verification on abstention.
+    claims_grounded, claims_closed = await asyncio.gather(
+        verify_claims([] if abstained else parse_claims(grounded), triples_prompt, verifier=verifier),
+        verify_claims(parse_sentences(closed), triples_prompt, True, verifier=verifier),
     )
 
     return {
@@ -88,6 +94,7 @@ def run_pipeline(
         "answer_grounded": grounded,
         "claims_grounded": claims_grounded,
         "claims_closed": claims_closed,
+        "abstained": abstained,
     }
 
 
@@ -101,7 +108,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    result = run_pipeline(args.question, answer_model=args.answer_model)
+    result = asyncio.run(run_pipeline(args.question, answer_model=args.answer_model))
 
     print(f"\n=== ANSWER MODEL: {result['answer_model']} ===")
 

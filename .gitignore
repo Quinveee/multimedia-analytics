@@ -17,6 +17,7 @@ mma2025/.venv/
 
 # archives
 *.bz2
+*.rar
 
 # Generated pipeline artifacts (large; regenerate via offline/main.py).
 # uris.json is small and kept tracked as a reference.
