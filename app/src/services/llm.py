@@ -207,8 +207,9 @@ async def answer_grounded(
         "below, each with an [I#] id). When a sentence relies on what is visibly shown "
         "in one of those images rather than a listed fact — an appearance, a depicted "
         "scene, a visual detail — cite it with its image id, like [I1], and state only "
-        "what is actually visible. Never use [T#] for a purely visual observation, and "
-        "never use [I#] for a textual fact."
+        "what is actually visible. When describing an image, refer to the entity by the "
+        "name given in its image label rather than saying 'a person' or 'the individual'. "
+        "Never use [T#] for a purely visual observation, and never use [I#] for a textual fact."
         if has_images
         else ""
     )
