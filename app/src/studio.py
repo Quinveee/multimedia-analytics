@@ -14,7 +14,9 @@ from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_u
 from flask import send_from_directory
 
 from src import config
+from src import studio_add_triple
 from src import studio_data as data
+from src.services import user_kg
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], title="KG Grounding Studio",
            suppress_callback_exceptions=True)
@@ -723,6 +725,7 @@ DRAWER = html.Aside([
                            style={"lineHeight": "1.2", "whiteSpace": "nowrap"})],
                  style={"display": "flex", "alignItems": "center", "gap": "9px"}),
         html.Div([
+            studio_add_triple.trigger_button(),
             html.Button(icon('<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>', 14, "currentColor", 2, style={"display": "inline-block"}),
                         id="gl-only-used-btn", n_clicks=0, className="gl-hoverbg",
                         title="Show only the relations used to answer", style=_drawer_btn()),
@@ -755,14 +758,18 @@ app.layout = html.Div([
     dcc.Store(id="gl-grow"),           # {sel, edges} to restore after an image node finishes growing
     dcc.Store(id="gl-mask-pending"),   # {question, model, dataset, verifier, subgraph} → triggers the masked re-run
     dcc.Store(id="gl-masked", data=[]),  # entities dropped so far (drives the "ignoring X" tags)
+    dcc.Store(id="ut-busy", data=False),  # add-triple is saving + regenerating (drives the popup spinner)
     dcc.Interval(id="gl-interval", interval=650, disabled=True, n_intervals=0),
     dcc.Interval(id="gl-grow-timer", interval=1400, n_intervals=0, max_intervals=1, disabled=True),
     HEADER,
     html.Div([html.Div([HERO, RESULTS], id="gl-chat", style={"flex": "1 1 auto", "minWidth": 0, "minHeight": 0,
               "display": "flex", "flexDirection": "column"}), DRAWER],
              id="gl-stage", style={"flex": "1 1 auto", "minHeight": 0, "display": "flex", "flexDirection": "row"}),
+    studio_add_triple.modal(),
 ], style={"width": "100vw", "minWidth": "720px", "height": "100vh", "minHeight": "640px", "display": "flex",
           "flexDirection": "column", "overflow": "hidden", "background": "#fbfcfd"})
+
+studio_add_triple.register(app)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -977,7 +984,22 @@ def on_filter(clicks, active, vm):
     return ordered, render_compare(vm, ordered)
 
 
-# ── claim/citation click / node tap / "view graph" pill → detail + selection ───
+# "view graph" summary pill → toggle the drawer. Kept separate from on_inspect so
+# that removing the pill on a re-render can't break on_inspect's other inputs.
+@callback(
+    Output("gl-drawer", "style", allow_duplicate=True),
+    Output("gl-drawer-open", "data", allow_duplicate=True),
+    Input("gl-trace-pill", "n_clicks"), State("gl-drawer-open", "data"),
+    prevent_initial_call=True,
+)
+def on_trace_pill(n, is_open):
+    if not n:  # also ignores the fire when the pill is (re)created
+        return no_update, no_update
+    nxt = not is_open
+    return drawer_style(nxt), nxt
+
+
+# ── claim/citation click / node tap → detail + selection ───
 @callback(
     Output("gl-detail", "children", allow_duplicate=True), Output("gl-cy", "elements", allow_duplicate=True),
     Output("gl-drawer", "style", allow_duplicate=True), Output("gl-drawer-open", "data", allow_duplicate=True),
@@ -985,21 +1007,14 @@ def on_filter(clicks, active, vm):
     Output("gl-grow-timer", "n_intervals", allow_duplicate=True),
     Input({"type": "gl-claim", "cids": ALL, "part": ALL}, "n_clicks"),
     Input({"type": "gl-cite", "cid": ALL}, "n_clicks"), Input("gl-cy", "tapNodeData"),
-    Input("gl-trace-pill", "n_clicks"),
-    State("gl-store", "data"), State("gl-drawer-open", "data"), State("gl-only-used", "data"),
+    State("gl-store", "data"), State("gl-only-used", "data"),
     prevent_initial_call=True,
 )
-def on_inspect(claim_clicks, cite_clicks, tap, _pill, vm, is_open, only_used):
+def on_inspect(claim_clicks, cite_clicks, tap, vm, only_used):
     NOOP = (no_update,) * 7
     if not vm:
         return NOOP
     trig = ctx.triggered_id
-    # "view graph" summary pill → just toggle the drawer
-    if trig == "gl-trace-pill":
-        if not _pill:  # pill was just (re)created, not actually clicked
-            return NOOP
-        nxt = not is_open
-        return (no_update, no_update, drawer_style(nxt), nxt, no_update, no_update, no_update)
 
     # Resolve which citation(s) the interaction points at.
     #   claim text  → every source the claim cites (aggregate)
@@ -1120,6 +1135,117 @@ def on_back(_n):
     hero = {"flex": "1 1 auto", "minHeight": 0, "display": "flex", "flexDirection": "column",
             "alignItems": "center", "justifyContent": "center", "padding": "24px", "overflowY": "auto"}
     return (hero, {"display": "none"}, drawer_style(False), False, True, False, "answer")
+
+
+def _regenerate(vm):
+    """Running-state outputs that re-run the current question through the pipeline.
+
+    Returns None when there is no current question to regenerate.
+    """
+    ctxd = (vm or {}).get("context") or {}
+    if not ctxd.get("question"):
+        return None
+    pending = {"q": ctxd["question"], "model": ctxd.get("model"),
+               "ds": ctxd.get("dataset", "DBpedia"), "verifier": ctxd.get("verifier")}
+    return (pending, None, True, 0, trace_initial(), [], actions_running(), [], [])
+
+
+@callback(
+    Output("ut-status", "children"),
+    Output("ut-modal", "is_open", allow_duplicate=True),
+    Output("gl-pending", "data", allow_duplicate=True),
+    Output("gl-store", "data", allow_duplicate=True),
+    Output("gl-interval", "disabled", allow_duplicate=True),
+    Output("gl-interval", "n_intervals", allow_duplicate=True),
+    Output("gl-trace", "children", allow_duplicate=True),
+    Output("gl-answer-wrap", "children", allow_duplicate=True),
+    Output("gl-actions", "children", allow_duplicate=True),
+    Output("gl-masked", "data", allow_duplicate=True),
+    Output("gl-mask-tags", "children", allow_duplicate=True),
+    Output("ut-subject", "value"), Output("ut-object", "value"),
+    Output("ut-predicate", "value"), Output("ut-predicate-custom", "value"),
+    Output("ut-predicate-label", "value", allow_duplicate=True),
+    Output("ut-node-label", "value"), Output("ut-node-abstract", "value"),
+    Output("ut-node-types", "value"), Output("ut-node-image", "contents"),
+    Output("ut-busy", "data"), Output("ut-submit", "disabled"),
+    Input("ut-submit", "n_clicks"),
+    State("ut-subject", "value"), State("ut-predicate", "value"),
+    State("ut-predicate-custom", "value"), State("ut-predicate-label", "value"),
+    State("ut-object", "value"), State("ut-node-label", "value"),
+    State("ut-node-abstract", "value"), State("ut-node-types", "value"),
+    State("ut-node-image", "contents"), State("gl-store", "data"),
+    prevent_initial_call=True,
+)
+def on_add_triple(n, subject, pred_value, pred_custom, pred_label, obj,
+                  node_label, node_abstract, node_types, node_image, vm):
+    if not n:
+        return (no_update,) * 22
+    keep_form = (no_update,) * 9
+    cleared = ("", "", None, "", "", "", "", "", None)
+    try:
+        kwargs = studio_add_triple.parse_form(subject, pred_value, pred_custom, pred_label,
+                                              obj, node_label, node_abstract, node_types, node_image)
+        result = user_kg.add_triple(**kwargs)
+    except ValueError as exc:
+        # keep the modal open with the error and leave the form untouched
+        return ((studio_add_triple.status_error(str(exc)), no_update) + (no_update,) * 9
+                + keep_form + (no_update, no_update))
+    regen = _regenerate(vm)
+    if regen is None:
+        # nothing to regenerate (no current question) — just confirm and clear
+        msg = studio_add_triple.status_success(
+            f"Added: {result['subject']} · {result['predicate_label']} · {result['object']}")
+        return (msg, False) + (no_update,) * 9 + cleared + (no_update, no_update)
+    # keep the modal open showing a spinner; _finish_regen closes it once the answer lands
+    busy = studio_add_triple.status_busy("Saving and regenerating the answer…")
+    return (busy, no_update) + regen + keep_form + (True, True)
+
+
+@callback(
+    Output("ut-modal", "is_open", allow_duplicate=True),
+    Output("ut-busy", "data", allow_duplicate=True),
+    Output("ut-submit", "disabled", allow_duplicate=True),
+    Output("ut-status", "children", allow_duplicate=True),
+    Output("ut-subject", "value", allow_duplicate=True), Output("ut-object", "value", allow_duplicate=True),
+    Output("ut-predicate", "value", allow_duplicate=True), Output("ut-predicate-custom", "value", allow_duplicate=True),
+    Output("ut-predicate-label", "value", allow_duplicate=True),
+    Output("ut-node-label", "value", allow_duplicate=True), Output("ut-node-abstract", "value", allow_duplicate=True),
+    Output("ut-node-types", "value", allow_duplicate=True), Output("ut-node-image", "contents", allow_duplicate=True),
+    Input("gl-store", "data"), State("ut-busy", "data"),
+    prevent_initial_call=True,
+)
+def on_finish_regen(vm, busy):
+    """Close the add-triple modal once the regenerated answer has arrived."""
+    if not busy or not vm:
+        return (no_update,) * 13
+    cleared = ("", "", None, "", "", "", "", "", None)
+    return (False, False, False, None) + cleared
+
+
+@callback(
+    Output("ut-status", "children", allow_duplicate=True),
+    Output("ut-modal", "is_open", allow_duplicate=True),
+    Output("gl-pending", "data", allow_duplicate=True),
+    Output("gl-store", "data", allow_duplicate=True),
+    Output("gl-interval", "disabled", allow_duplicate=True),
+    Output("gl-interval", "n_intervals", allow_duplicate=True),
+    Output("gl-trace", "children", allow_duplicate=True),
+    Output("gl-answer-wrap", "children", allow_duplicate=True),
+    Output("gl-actions", "children", allow_duplicate=True),
+    Output("gl-masked", "data", allow_duplicate=True),
+    Output("gl-mask-tags", "children", allow_duplicate=True),
+    Input("ut-reset", "submit_n_clicks"),
+    State("gl-store", "data"),
+    prevent_initial_call=True,
+)
+def on_reset_user(n, vm):
+    if not n:
+        return (no_update,) * 11
+    user_kg.reset()
+    regen = _regenerate(vm)
+    if regen is None:
+        return (studio_add_triple.status_success("Cleared all user additions."), no_update) + (no_update,) * 9
+    return (no_update, False) + regen
 
 
 if __name__ == "__main__":
