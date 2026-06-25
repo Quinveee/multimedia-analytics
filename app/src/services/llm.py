@@ -63,6 +63,28 @@ def _image_content(image_paths: list[str]) -> list[dict]:
     return blocks
 
 
+def _labeled_image_content(
+    image_paths: list[str], image_labels: list[str] = None
+) -> list[dict]:
+    """
+    Build image content blocks, each preceded by a ``[I#] Image of <label>:`` text
+    marker so the model can cite what it sees in a specific image (see the [I#]
+    citation rule in ``answer_grounded``). The id ``[I#]`` is the 1-based position
+    in ``image_paths`` — kept stable even when a file is missing — so it matches
+    the "Images" list in the system prompt and the ordering the pipeline records.
+    """
+    labels = image_labels or []
+    blocks = []
+    for i, p in enumerate(image_paths):
+        img = _image_content([p])  # 0 (missing) or 1 block
+        if not img:
+            continue
+        name = labels[i] if i < len(labels) and labels[i] else f"image {i + 1}"
+        blocks.append({"type": "text", "text": f"[I{i + 1}] Image of {name}:"})
+        blocks.append(img[0])
+    return blocks
+
+
 def _to_anthropic_content(content) -> list[dict]:
     """
     Convert OpenAI-style content (str or list) to Anthropic format.
@@ -162,29 +184,68 @@ async def answer_closed(question: str, model: str = None) -> str:
 
 
 async def answer_grounded(
-    question: str, triples: str, model: str = None, image_paths: list[str] = None
+    question: str,
+    triples: str,
+    model: str = None,
+    image_paths: list[str] = None,
+    image_labels: list[str] = None,
 ) -> str:
+    has_images = bool(image_paths)
+    # The grounded answer may cite two kinds of source: text facts [T#] and, when
+    # entity images are provided, what is visibly shown in them [I#]. Keeping the
+    # two channels separate lets the UI flag image-grounded claims distinctly and
+    # stops the model from pinning a visual observation onto an unrelated fact.
+    image_rule = (
+        " You are also shown labeled images of some entities (listed under \"Images\" "
+        "below, each with an [I#] id). When a sentence relies on what is visibly shown "
+        "in one of those images rather than a listed fact — an appearance, a depicted "
+        "scene, a visual detail — cite it with its image id, like [I1], and state only "
+        "what is actually visible. Never use [T#] for a purely visual observation, and "
+        "never use [I#] for a textual fact."
+        if has_images
+        else ""
+    )
+    if has_images:
+        labels = image_labels or []
+        lines = "\n".join(
+            f"[I{i + 1}] {labels[i] if i < len(labels) and labels[i] else f'image {i + 1}'}"
+            for i in range(len(image_paths))
+        )
+        image_list = f"\n\nImages:\n{lines}"
+        example_img = "Example image:\n[I1] (photograph of Marie Curie in her laboratory)\n"
+        example_img_sentence = (
+            " A photograph shows her working at a laboratory bench amid glassware [I1]."
+        )
+    else:
+        image_list = example_img = example_img_sentence = ""
     system = (
         "Answer the question in a natural, fluent paragraph using ONLY the knowledge "
-        "graph facts below. Write the way a knowledgeable person would explain it: "
+        "graph facts below"
+        + (" and the entity images provided" if has_images else "")
+        + ". Write the way a knowledgeable person would explain it: "
         "rephrase the facts into well-formed prose instead of copying them verbatim, "
         "and connect related facts smoothly. "
         "End each sentence with the fact ID(s) it relies on — use several, like "
         "[T2][T5], when a sentence draws on multiple facts. Every sentence that states "
         "a fact must carry at least one citation, and you may only state what the cited "
-        "facts support. "
+        "facts support." + image_rule + " "
         "Do not use bullet points, lists, or headers.\n\n"
         "Example facts:\n"
         "[T1] Marie Curie birthPlace Warsaw\n"
         "[T2] Marie Curie field Physics\n"
         "[T3] Marie Curie award Nobel Prize in Physics\n"
-        "Example answer: Marie Curie was a physicist born in Warsaw [T1][T2]. "
-        "She went on to be awarded the Nobel Prize in Physics [T3].\n\n"
+        + example_img
+        + "Example answer: Marie Curie was a physicist born in Warsaw [T1][T2]. "
+        "She went on to be awarded the Nobel Prize in Physics [T3]."
+        + example_img_sentence
+        + "\n\n"
         "If the facts do not contain enough information to answer, respond only with: "
         '"The provided facts do not contain enough information to answer this question."\n\n'
-        f"Facts:\n{triples}"
+        f"Facts:\n{triples}" + image_list
     )
-    image_blocks = _image_content(image_paths) if image_paths else []
+    image_blocks = (
+        _labeled_image_content(image_paths, image_labels) if has_images else []
+    )
     user_content = (
         [{"type": "text", "text": question}] + image_blocks
         if image_blocks
@@ -217,7 +278,8 @@ def parse_claims(answer: str) -> list[dict]:
     start = 0
     for match in re.finditer(r"[.!?]+", answer):
         end = match.end()
-        trailing = re.match(r"(?:\s*\[T\d+\])+", answer[end:])  # absorb "[T#]" after the period
+        # absorb "[T#]" / "[I#]" citations trailing the period
+        trailing = re.match(r"(?:\s*\[[TI]\d+\])+", answer[end:])
         if trailing:
             end += trailing.end()
         rest = answer[end:]
@@ -232,12 +294,22 @@ def parse_claims(answer: str) -> list[dict]:
     for s, e in spans:
         segment = answer[s:e]
         cited = list(dict.fromkeys(int(n) for n in re.findall(r"\[T(\d+)\]", segment)))
-        claim = re.sub(r"\[T\d+\]", "", segment)
+        # image citations [I#]: claims grounded in what an entity's image shows
+        cited_images = list(
+            dict.fromkeys(int(n) for n in re.findall(r"\[I(\d+)\]", segment))
+        )
+        claim = re.sub(r"\[[TI]\d+\]", "", segment)
         claim = re.sub(r"\s+([.,;:!?])", r"\1", claim)  # drop space left before punctuation
         claim = re.sub(r"\s+", " ", claim).strip()
         if claim:
             result.append(
-                {"claim": claim, "cited_triples": cited, "start": s, "end": e}
+                {
+                    "claim": claim,
+                    "cited_triples": cited,
+                    "cited_images": cited_images,
+                    "start": s,
+                    "end": e,
+                }
             )
     return result
 

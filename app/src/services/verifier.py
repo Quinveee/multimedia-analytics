@@ -81,6 +81,10 @@ async def verify_claims(
     async def label_for(c: dict) -> dict:
         cited = c.get("cited_triples", [])
         if not cited:
+            # claim grounded only in an entity's image — can't be checked against
+            # triples; it carries its own "visual" state instead of unverifiable.
+            if c.get("cited_images"):
+                return {**c, "label": "visual"}
             if verify_uncited and triple_lines:
                 cited_texts = triple_lines
             else:
