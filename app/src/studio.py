@@ -448,7 +448,8 @@ ALL_LABELS = ["supported", "inferred", "unverifiable"]
 
 def _claim_stats(items):
     n = len(items)
-    bad = sum(1 for x in items if x.get("label", "unverifiable") != "supported")
+    # Only "unverifiable" counts as unsupported — "inferred" is treated as supported.
+    bad = sum(1 for x in items if x.get("label", "unverifiable") == "unverifiable")
     return bad, n, (round(bad / n * 100) if n else 0)
 
 
