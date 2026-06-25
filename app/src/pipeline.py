@@ -53,21 +53,38 @@ async def run_pipeline(
     # Rank the triples in the subgraph and verbalise them for the LLM
     triples = rank_triples(subgraph, question)
     triples_prompt = verbalise_triples(subgraph, question)
+    print(f"[pipeline] triples prompt:\n{triples_prompt or '(none)'}")
 
-    # Prepare image paths for entities that have associated images
+    # cap subgraph to only nodes/edges used in the ranked triples
+    ranked_pairs = {(t["subject"], t["object"]) for t in triples}
+    display_edges = [e for e in subgraph["edges"] if (e["subject"], e["object"]) in ranked_pairs]
+    display_node_ids = {e["subject"] for e in display_edges} | {e["object"] for e in display_edges} | set(entity_uris)
+    subgraph = {
+        "nodes": [n for n in subgraph["nodes"] if n["id"] in display_node_ids],
+        "edges": display_edges,
+    }
+
+    # Prepare images for entities that have them (seed entities only). The order
+    # here defines the [I#] citation ids the model uses, so keep paths, labels and
+    # node ids parallel — image_nodes[k] ↔ [I(k+1)].
     kg_dir = config.KG_PATH.parent.resolve()
-    image_paths = [
-        str(kg_dir / n["image"])
+    image_nodes = [
+        n
         for n in subgraph["nodes"]
         if n.get("image") and n["id"] in entity_uris
     ]
+    image_paths = [str(kg_dir / n["image"]) for n in image_nodes]
+    image_labels = [n.get("label") or n["id"] for n in image_nodes]
 
     # Generate the closed-book and grounded answers concurrently (independent
     # async LLM calls via AsyncOpenAI → truly non-blocking, run in parallel).
     answer_tasks = [answer_closed(question, answer_model)]
     if triples_prompt:
         answer_tasks.append(
-            answer_grounded(question, triples_prompt, answer_model, image_paths or None)
+            answer_grounded(
+                question, triples_prompt, answer_model,
+                image_paths or None, image_labels or None,
+            )
         )
     answers = await asyncio.gather(*answer_tasks)
     closed = answers[0]
@@ -95,6 +112,8 @@ async def run_pipeline(
         "claims_grounded": claims_grounded,
         "claims_closed": claims_closed,
         "abstained": abstained,
+        # entity node ids in [I#] order, so [I1] ↔ image_citation_nodes[0]
+        "image_citation_nodes": [n["id"] for n in image_nodes],
     }
 
 

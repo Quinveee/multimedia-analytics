@@ -28,7 +28,7 @@ NODE_BORDER = {k: v[0] for k, v in KIND_COLORS.items()}
 # ══════════════════════════════════════════════════════════════════════════════
 #  Real-pipeline → view model mapping
 # ══════════════════════════════════════════════════════════════════════════════
-_CITE_RE = re.compile(r"\s*\[T\d+\]?")
+_CITE_RE = re.compile(r"\s*\[[TI]\d+\]?")
 
 
 def _kind_of(types: list[str]) -> str:
@@ -89,6 +89,9 @@ def real_view_model(result: dict, model_label: str) -> dict:
     # inspectable, not just the first. (The parser collects all [T#] per sentence;
     # the mapping below must not collapse them back to one.)
     answer = result.get("answer_grounded", "")
+    # entity node ids in [I#] order: image_nodes[k] backs the citation "[I(k+1)]"
+    image_nodes = result.get("image_citation_nodes", [])
+    node_by_id = {n["id"]: n for n in nodes}
     claims = sorted(result.get("claims_grounded", []), key=lambda c: c.get("start") or 0)
     tokens: list[dict] = []
     citations: dict = {}
@@ -104,29 +107,52 @@ def real_view_model(result: dict, model_label: str) -> dict:
         text = _CITE_RE.sub("", answer[s:e]).strip()
         cited = c.get("cited_triples") or []
         label = c.get("label", "supported")
-        if cited and text:
+        cids = []
+        for t_idx in cited:
+            cite_i += 1
+            cid = f"C{cite_i}"
+            t = triples[t_idx - 1] if 1 <= t_idx <= len(triples) else None
+            # point the citation at the object node and remember the backing edge
+            obj = t["object"] if t else (nodes[0]["id"] if nodes else "")
+            citations[cid] = {
+                "num": t_idx,   # the [T#] shown as the citation marker
+                "node": obj,
+                "triple": (f"{t['subject_label']} — {t['predicate_label']} — {t['object_label']}"
+                           if t else text),
+                # subject —predicate→ object, for the evidence card's arrow form
+                "s_label": t["subject_label"] if t else "",
+                "p_label": t["predicate_label"] if t else "",
+                "o_label": t["object_label"] if t else text,
+                "src": "Knowledge graph",
+                "kind": "triple",
+                "edges": [(t["subject"], t["object"])] if t else [],
+                "label": label,
+            }
+            cids.append(cid)
+        # image citations [I#]: the claim leans on what an entity's image shows.
+        # No backing KG edge — point straight at the depicted node, flag "visual".
+        for i_idx in (c.get("cited_images") or []):
+            node_id = image_nodes[i_idx - 1] if 1 <= i_idx <= len(image_nodes) else None
+            node = node_by_id.get(node_id)
+            if not node:
+                continue
+            cite_i += 1
+            cid = f"C{cite_i}"
+            citations[cid] = {
+                "num": f"I{i_idx}",   # the [I#] shown as the citation marker
+                "node": node_id,
+                "triple": f"{node['label']} — shown in image",
+                "s_label": node["label"],
+                "p_label": "shown in image",
+                "o_label": "",
+                "src": "Node image",
+                "kind": "image",
+                "edges": [],
+                "label": "visual",
+            }
+            cids.append(cid)
+        if cids and text:
             n_claims += 1
-            cids = []
-            for t_idx in cited:
-                cite_i += 1
-                cid = f"C{cite_i}"
-                t = triples[t_idx - 1] if 1 <= t_idx <= len(triples) else None
-                # point the citation at the object node and remember the backing edge
-                obj = t["object"] if t else (nodes[0]["id"] if nodes else "")
-                citations[cid] = {
-                    "num": t_idx,   # the [T#] shown as the citation marker
-                    "node": obj,
-                    "triple": (f"{t['subject_label']} — {t['predicate_label']} — {t['object_label']}"
-                               if t else text),
-                    # subject —predicate→ object, for the evidence card's arrow form
-                    "s_label": t["subject_label"] if t else "",
-                    "p_label": t["predicate_label"] if t else "",
-                    "o_label": t["object_label"] if t else text,
-                    "src": "Knowledge graph",
-                    "edges": [(t["subject"], t["object"])] if t else [],
-                    "label": label,
-                }
-                cids.append(cid)
             tokens.append({"t": text, "cites": cids})
         elif text:
             tokens.append({"t": text})
@@ -152,8 +178,10 @@ def real_view_model(result: dict, model_label: str) -> dict:
     gi = 0
     for c in claims:
         label = c.get("label", "unverifiable")
-        row = {"t": c.get("claim", ""), "label": label, "ok": label == "supported"}
-        if c.get("cited_triples"):
+        # "visual" claims are grounded (in an image), so they count as ok, not bad
+        row = {"t": c.get("claim", ""), "label": label,
+               "ok": label in ("supported", "visual")}
+        if c.get("cited_triples") or c.get("cited_images"):
             gi += 1
             row["c"] = f"C{gi}"
         grounded.append(row)

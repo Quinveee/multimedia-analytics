@@ -53,8 +53,16 @@ LINK_GLYPH = ('<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/>'
 FIT_GLYPH = '<path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"/>'
 CHEV_GLYPH = '<path d="M9 6l6 6-6 6"/>'
 ARROW_GLYPH = '<path d="M5 12h13M13 6l6 6-6 6"/>'
+EYE_OFF_GLYPH = ('<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.7 5.1A11 11 0 0 1 12 5c7 0 10 7 10 7'
+                 'a13 13 0 0 1-1.7 2.7"/><path d="M6.6 6.6A13 13 0 0 0 2 12s3 7 10 7a11 11 0 0 0 5.4-1.4"/>'
+                 '<line x1="2" y1="2" x2="22" y2="22"/>')
+# camera glyph — marks a claim grounded in an entity's image rather than a triple
+IMAGE_GLYPH = ('<rect x="3" y="6" width="18" height="14" rx="2.4"/>'
+               '<path d="M8 6l1.4-2.2h5.2L16 6"/><circle cx="12" cy="13" r="3.4"/>')
 
-# verification label → visual style (3-color: supported / inferred / unverifiable)
+# verification label → visual style. The first three are the support spectrum
+# (supported / inferred / unverifiable); "visual" is a separate channel for claims
+# read off an entity's image, which can't be checked against the knowledge graph.
 LABEL_STYLE = {
     "supported":    {"color": "#0ca678", "bg": "#ffffff", "border": "#eef0f2",
                      "under": "#63e6be", "chip": "#0ca678", "chipbg": "#e6fcf5", "tag": None},
@@ -62,6 +70,8 @@ LABEL_STYLE = {
                      "under": "#ffd43b", "chip": "#e8590c", "chipbg": "#fff3bf", "tag": "inferred"},
     "unverifiable": {"color": "#e03131", "bg": "#fff6f5", "border": "#ffd9d4",
                      "under": "#ffa8a8", "chip": "#e03131", "chipbg": "#ffe3e0", "tag": "unsupported"},
+    "visual":       {"color": "#7048e8", "bg": "#faf8ff", "border": "#e5dbff",
+                     "under": "#b197fc", "chip": "#7048e8", "chipbg": "#f3f0ff", "tag": "from image"},
 }
 
 
@@ -71,6 +81,8 @@ def _lstyle(label):
 
 def label_icon(label, size=15):
     st = _lstyle(label)
+    if label == "visual":
+        return icon(IMAGE_GLYPH, size, st["color"], 2)
     glyph, width = (CHECK_GLYPH, 2.6) if label == "supported" else (WARN_GLYPH, 2)
     return icon(glyph, size, st["color"], width)
 
@@ -112,7 +124,9 @@ CYTO_STYLESHEET = [
         "border-width": 2.5, "border-color": "data(col)", "label": "data(label)",
         "font-family": "Open Sans, sans-serif", "font-size": 9.5, "font-weight": 600, "color": "#495057",
         "text-valign": "bottom", "text-margin-y": 5, "text-max-width": 86, "text-wrap": "wrap",
-        "width": 44, "height": 44, "overlay-opacity": 0}},
+        "width": 44, "height": 44, "overlay-opacity": 0,
+        "transition-property": "width, height, border-width", "transition-duration": "0.4s",
+        "transition-timing-function": "ease-out"}},
     {"selector": "node.big", "style": {"width": 62, "height": 62, "border-width": 3.5,
                                        "font-size": 11, "font-weight": 800, "color": "#212529"}},
     {"selector": "node[gap = 1]", "style": {"border-style": "dashed", "border-color": "#ced4da", "border-width": 2}},
@@ -124,6 +138,9 @@ CYTO_STYLESHEET = [
     {"selector": ".hi-edge", "style": {"line-color": "#f59f00", "width": 3.4, "color": "#e8590c",
                                        "font-weight": 700, "text-background-opacity": 1, "z-index": 9}},
     {"selector": ".dim", "style": {"opacity": .22}},
+    # image claim clicked → the depicted node briefly swells, then eases back (see gl-grow-timer)
+    {"selector": "node.grow", "style": {"width": 128, "height": 128, "border-width": 6,
+                                        "border-color": "#1971c2", "z-index": 99}},
 ]
 
 
@@ -147,10 +164,12 @@ def used_keys(vm):
     return edges, nodes
 
 
-def build_elements(vm, selected=None, hi_edges=None, only_used=False):
+def build_elements(vm, selected=None, hi_edges=None, only_used=False, grow=None):
     """selected: node id(s) to mark sel-node. hi_edges: (source, target) pairs to light up.
-    only_used: keep only the relations (and their nodes) that backed the answer."""
+    grow: node id(s) to temporarily enlarge (image claims). only_used: keep only the
+    relations (and their nodes) that backed the answer."""
     sel = ({selected} if isinstance(selected, str) else set(selected)) if selected else set()
+    grw = ({grow} if isinstance(grow, str) else set(grow)) if grow else set()
     hi = {frozenset(p) for p in (hi_edges or [])}
     u_edges, u_nodes = used_keys(vm) if only_used else (None, None)
     els = []
@@ -162,6 +181,8 @@ def build_elements(vm, selected=None, hi_edges=None, only_used=False):
             classes.append("big")
         if n["id"] in sel:
             classes.append("sel-node")
+        if n["id"] in grw:
+            classes.append("grow")
         d = {"data": {"id": n["id"], "label": n["label"], "img": node_img_src(n),
                       "col": data.NODE_BORDER.get(n.get("kind"), "#868e96"),
                       "gap": 0 if n.get("has_image") else 1},
@@ -250,6 +271,18 @@ def trace_initial():
     ], style={"background": "#f8f9fb", "border": "1px solid #eef0f2", "borderRadius": "12px", "padding": "11px 13px"})
 
 
+def render_mask_tags(masked):
+    """Chips naming the entities dropped from the graph for the current (re)grounding,
+    so a masked re-run reads as 'this answer ignores X' at a glance."""
+    return [html.Span([
+        icon(EYE_OFF_GLYPH, 12, "#b85309", 2, style={"display": "inline-block", "flex": "0 0 auto"}),
+        html.Span(["ignoring ", html.B(m["label"])], style={"marginLeft": "5px"})],
+        style={"display": "inline-flex", "alignItems": "center", "background": "#fff8f0",
+               "border": "1px solid #ffd9a8", "color": "#b85309", "borderRadius": "20px",
+               "padding": "3px 10px", "fontSize": "11px", "fontWeight": 600})
+        for m in (masked or [])]
+
+
 def render_no_grounding(vm):
     """Shown when retrieval returned no triples — a grounded answer isn't possible."""
     linked = vm.get("link_chips") or []
@@ -315,14 +348,22 @@ def render_answer(vm):
         cluster = _evidence_cluster(vm, cids, st, cluster_id)
         # keep the pill glued to the claim's last word so it never orphans onto a
         # line of its own — the head wraps freely, "last word + pill" stay together.
-        us = {"borderBottomColor": st["under"]}
+        # the claim text itself is clickable: it focuses every node the claim cites
+        # in the graph at once (the cluster numbers still focus a single source).
+        us = {"borderBottomColor": st["under"], "cursor": "pointer"}
+        joined = ",".join(cids)
+
+        def claim_span(txt, part):
+            return html.Span(txt, className="gl-claim", style=us, n_clicks=0,
+                             id={"type": "gl-claim", "cids": joined, "part": part})
+
         head, _, last = tk["t"].rpartition(" ")
         if head:
-            inner = [html.Span(head + " ", className="gl-claim", style=us),
-                     html.Span([html.Span(last, className="gl-claim", style=us), cluster],
+            inner = [claim_span(head + " ", 0),
+                     html.Span([claim_span(last, 1), cluster],
                                style={"whiteSpace": "nowrap"})]
         else:
-            inner = [html.Span([html.Span(tk["t"], className="gl-claim", style=us), cluster],
+            inner = [html.Span([claim_span(tk["t"], 0), cluster],
                                style={"whiteSpace": "nowrap"})]
         children.append(html.Span(inner, className="gl-rise"))
         popovers.append(dbc.Popover(_evidence_card(vm, cids), target=cluster_id, trigger="hover focus",
@@ -332,10 +373,14 @@ def render_answer(vm):
 
 
 def _evidence_cluster(vm, cids, st, cluster_id):
-    """Inline evidence pill: the KG glyph + one clickable number per cited fact,
-    middot-separated, tinted by the claim's verification state. Each number keeps
-    its own ``gl-cite`` id so clicking it still focuses that fact in the graph."""
-    inner = [icon(GRAPH_GLYPH, 12, st["chip"], 2.1,
+    """Inline evidence pill: a source glyph + one clickable number per cited
+    source, middot-separated, tinted by the claim's verification state. Each
+    number keeps its own ``gl-cite`` id so clicking it still focuses that source
+    in the graph. The lead glyph turns into a camera when every cited source is an
+    entity image, so image-grounded claims read as visual at a glance."""
+    kinds = [vm["citations"].get(c, {}).get("kind") for c in cids]
+    lead = IMAGE_GLYPH if kinds and all(k == "image" for k in kinds) else GRAPH_GLYPH
+    inner = [icon(lead, 12, st["chip"], 2.1,
                   style={"display": "inline-block", "marginRight": "5px", "opacity": ".9"})]
     for i, cid in enumerate(cids):
         cit = vm["citations"].get(cid, {})
@@ -352,16 +397,25 @@ def _evidence_card(vm, cids):
     """The combined hover card: one row per fact (node tile · subject—pred→object ·
     [T#] · state), so a multi-citation claim is read as one body of evidence."""
     n = len(cids)
+    img_only = bool(cids) and all(vm["citations"].get(c, {}).get("kind") == "image" for c in cids)
     rows = []
     for cid in cids:
         cit = vm["citations"].get(cid, {})
+        is_img = cit.get("kind") == "image"
         st = _lstyle(cit.get("label", "supported"))
         node = next((x for x in vm["nodes"] if x["id"] == cit.get("node")), None)
         tile = html.Img(src=node_img_src(node), style={
             "width": "34px", "height": "34px", "borderRadius": "8px", "flex": "0 0 auto",
-            **({} if (node or {}).get("has_image") else {"border": "1.5px dashed #ced4da"})}) if node else None
-        # subject —predicate→ object (falls back to the joined triple text)
-        if cit.get("p_label") or cit.get("o_label"):
+            **({"boxShadow": f"0 0 0 1.5px {st['under']}"} if is_img
+               else {} if (node or {}).get("has_image") else {"border": "1.5px dashed #ced4da"})}) if node else None
+        if is_img:
+            # image-grounded: "<entity> · shown in image" (no triple arrow / object)
+            triple = html.Div([
+                html.Span(cit.get("s_label", ""), style={"color": "#212529", "fontWeight": 600}),
+                html.Span(" · shown in image", style={"color": st["chip"], "fontWeight": 600}),
+            ], className="mono", style={"fontSize": "10px", "lineHeight": "1.55"})
+        elif cit.get("p_label") or cit.get("o_label"):
+            # subject —predicate→ object
             triple = html.Div([
                 html.Span(cit.get("s_label", ""), style={"color": "#868e96"}),
                 html.Span(f" {cit.get('p_label', '')} ", style={"color": st["chip"], "fontWeight": 600}),
@@ -379,11 +433,13 @@ def _evidence_card(vm, cids):
             "borderRadius": "5px", "padding": "1px 5px", "flex": "0 0 auto", "alignSelf": "flex-start"})
         rows.append(html.Div([tile, html.Div([triple, state], style={"minWidth": 0, "flex": 1}), num],
                              className="gl-evrow"))
-    header = html.Div([icon(GRAPH_GLYPH, 12, "#868e96", 2, style={"display": "inline-block"}),
-                       html.Span(f"backs this claim · {n} fact{'s' if n != 1 else ''}",
+    hdr_glyph = IMAGE_GLYPH if img_only else GRAPH_GLYPH
+    unit = "image" if img_only else "fact"
+    header = html.Div([icon(hdr_glyph, 12, "#868e96", 2, style={"display": "inline-block"}),
+                       html.Span(f"backs this claim · {n} {unit}{'s' if n != 1 else ''}",
                                  style={"marginLeft": "5px"})], className="gl-evhdr")
     footer = html.Div([icon(LINK_GLYPH, 11, "#adb5bd", 2, style={"display": "inline-block"}),
-                       html.Span("Knowledge graph", style={"marginLeft": "5px"}),
+                       html.Span("Node image" if img_only else "Knowledge graph", style={"marginLeft": "5px"}),
                        html.Span("click a number → open graph",
                                  style={"marginLeft": "auto", "color": "#1971c2", "fontWeight": 600})],
                       className="gl-evftr")
@@ -443,12 +499,13 @@ def detail_for(vm, node_id, cid=None):
     ], style={"minWidth": 0, "flex": 1})], style={"display": "flex", "gap": "11px", "alignItems": "flex-start"})
 
 
-ALL_LABELS = ["supported", "inferred", "unverifiable"]
+ALL_LABELS = ["supported", "inferred", "unverifiable", "visual"]
 
 
 def _claim_stats(items):
     n = len(items)
-    bad = sum(1 for x in items if x.get("label", "unverifiable") != "supported")
+    # Only "unverifiable" counts as unsupported — "inferred" is treated as supported.
+    bad = sum(1 for x in items if x.get("label", "unverifiable") == "unverifiable")
     return bad, n, (round(bad / n * 100) if n else 0)
 
 
@@ -645,6 +702,7 @@ RESULTS = html.Div([html.Div([
     ], style={"display": "flex", "alignItems": "center", "gap": "12px", "marginBottom": "16px"}),
     html.H2("", id="gl-qheading", style={"fontSize": "21px", "fontWeight": 800, "letterSpacing": "-.3px",
             "color": "#212529", "margin": "0 0 22px", "lineHeight": "1.35"}),
+    html.Div([], id="gl-mask-tags", style={"display": "flex", "flexWrap": "wrap", "gap": "6px", "margin": "0 0 16px"}),
     html.Div([
         html.Div(id="gl-trace", style={"marginBottom": "16px"}),
         html.Div(id="gl-answer-wrap"),
@@ -694,7 +752,11 @@ app.layout = html.Div([
     dcc.Store(id="gl-pending"),        # {q, model, ds, verifier} → triggers the heavy run
     dcc.Store(id="gl-filter", data=ALL_LABELS),   # active support levels in compare (#4)
     dcc.Store(id="gl-only-used", data=False),     # graph: show only the relations used to answer
+    dcc.Store(id="gl-grow"),           # {sel, edges} to restore after an image node finishes growing
+    dcc.Store(id="gl-mask-pending"),   # {question, model, dataset, verifier, subgraph} → triggers the masked re-run
+    dcc.Store(id="gl-masked", data=[]),  # entities dropped so far (drives the "ignoring X" tags)
     dcc.Interval(id="gl-interval", interval=650, disabled=True, n_intervals=0),
+    dcc.Interval(id="gl-grow-timer", interval=1400, n_intervals=0, max_intervals=1, disabled=True),
     HEADER,
     html.Div([html.Div([HERO, RESULTS], id="gl-chat", style={"flex": "1 1 auto", "minWidth": 0, "minHeight": 0,
               "display": "flex", "flexDirection": "column"}), DRAWER],
@@ -745,6 +807,7 @@ def first_citation(vm):
     Output("gl-mdlabel", "children"), Output("gl-qheading", "children"), Output("gl-view", "data"),
     Output("gl-q", "value"), Output("gl-trace", "children"), Output("gl-answer-wrap", "children"),
     Output("gl-actions", "children"),
+    Output("gl-masked", "data"), Output("gl-mask-tags", "children"),
     Input("gl-submit", "n_clicks"), Input("gl-q", "n_submit"),
     Input({"type": "gl-ex", "i": ALL}, "n_clicks"),
     State("gl-q", "value"), State("gl-model", "value"),
@@ -765,7 +828,7 @@ def on_submit(_n, _ns, _ex, q, model, verifier):
     results_shown = {"display": "flex", "flex": "1 1 auto", "minHeight": 0, "flexDirection": "column", "overflowY": "auto"}
     return ({"q": q, "model": model, "ds": ds, "verifier": verifier or "llm"}, None, True, 0,
             hero_hidden, results_shown, f"{model} · {ds}", f"“{q}”", "answer", q,
-            trace_initial(), [], actions_running())
+            trace_initial(), [], actions_running(), [], [])  # last two: reset masked entities + tags
 
 
 # ── run the pipeline (the slow part) once the UI has shown the running state ────
@@ -783,28 +846,58 @@ async def on_run(pending):
     return vm, False, 0  # data ready → arm the staged reveal (on_tick)
 
 
-# ── mask an entity and regenerate (#3) — re-run on the filtered subgraph ────────
+# ── mask an entity and regenerate (#3) ─────────────────────────────────────────
+# Two callbacks, mirroring submit→run: the click instantly shows the staged reveal
+# (tagged with what's being dropped) so the screen never sits frozen, and the slow
+# re-ground happens in the background — the reveal animates once the data lands.
 @callback(
-    Output("gl-store", "data", allow_duplicate=True),
-    Output("gl-interval", "n_intervals", allow_duplicate=True),
-    Output("gl-interval", "disabled", allow_duplicate=True),
+    Output("gl-mask-pending", "data"), Output("gl-store", "data", allow_duplicate=True),
+    Output("gl-masked", "data", allow_duplicate=True), Output("gl-mask-tags", "children", allow_duplicate=True),
+    Output("gl-trace", "children", allow_duplicate=True), Output("gl-answer-wrap", "children", allow_duplicate=True),
+    Output("gl-actions", "children", allow_duplicate=True),
+    Output("gl-interval", "disabled", allow_duplicate=True), Output("gl-interval", "n_intervals", allow_duplicate=True),
     Input({"type": "gl-mask", "node": ALL}, "n_clicks"),
-    State("gl-store", "data"), prevent_initial_call=True,
+    State("gl-store", "data"), State("gl-masked", "data"), prevent_initial_call=True,
 )
-async def on_mask(clicks, vm):
+def on_mask_start(clicks, vm, masked):
+    """Instant: drop the entity, tag the screen, and show the pipeline 'running'. The
+    heavy re-ground happens in on_mask_run (triggered by gl-mask-pending)."""
     # ignore the spurious fire when a mask button is (re)created in the detail panel
     if not vm or not isinstance(ctx.triggered_id, dict) or not any(c for c in (clicks or [])):
-        return no_update, no_update, no_update
+        return (no_update,) * 9
     node_id = ctx.triggered_id["node"]
+    label = next((n["label"] for n in vm["nodes"] if n["id"] == node_id), node_id)
+    masked = list(masked or [])
+    if not any(m.get("id") == node_id for m in masked):
+        masked.append({"id": node_id, "label": label})
+    # filter the raw subgraph now (cheap) and hand everything the re-run needs to the
+    # pending store, so on_mask_run doesn't depend on gl-store (which we clear to None
+    # — that keeps on_tick quiet until the masked result arrives, exactly like submit).
     cx = vm.get("context") or {}
     sub = cx.get("subgraph") or {"nodes": [], "edges": []}
     filtered = {
         "nodes": [n for n in sub["nodes"] if n["id"] != node_id],
         "edges": [e for e in sub["edges"] if e["subject"] != node_id and e["object"] != node_id],
     }
-    new_vm = await data.get_result(cx["question"], cx["model"], cx.get("dataset", "DBpedia"),
-                                   verifier=cx.get("verifier"), subgraph=filtered)
-    return new_vm, 0, False  # replay the reveal with the masked result
+    pending = {"question": cx.get("question"), "model": cx.get("model"),
+               "dataset": cx.get("dataset", "DBpedia"), "verifier": cx.get("verifier"),
+               "subgraph": filtered}
+    return (pending, None, masked, render_mask_tags(masked),
+            trace_initial(), [], actions_running(), True, 0)
+
+
+@callback(
+    Output("gl-store", "data", allow_duplicate=True),
+    Output("gl-interval", "n_intervals", allow_duplicate=True),
+    Output("gl-interval", "disabled", allow_duplicate=True),
+    Input("gl-mask-pending", "data"), prevent_initial_call=True,
+)
+async def on_mask_run(pending):
+    if not pending:
+        return no_update, no_update, no_update
+    new_vm = await data.get_result(pending["question"], pending["model"], pending.get("dataset", "DBpedia"),
+                                   verifier=pending.get("verifier"), subgraph=pending.get("subgraph"))
+    return new_vm, 0, False  # data ready → arm the staged reveal (on_tick)
 
 
 # ── staged pipeline reveal (driven by the Interval) ────────────────────────────
@@ -884,44 +977,85 @@ def on_filter(clicks, active, vm):
     return ordered, render_compare(vm, ordered)
 
 
-# ── citation click / node tap / "view graph" pill → detail + selection ─────────
+# ── claim/citation click / node tap / "view graph" pill → detail + selection ───
 @callback(
     Output("gl-detail", "children", allow_duplicate=True), Output("gl-cy", "elements", allow_duplicate=True),
     Output("gl-drawer", "style", allow_duplicate=True), Output("gl-drawer-open", "data", allow_duplicate=True),
+    Output("gl-grow", "data", allow_duplicate=True), Output("gl-grow-timer", "disabled", allow_duplicate=True),
+    Output("gl-grow-timer", "n_intervals", allow_duplicate=True),
+    Input({"type": "gl-claim", "cids": ALL, "part": ALL}, "n_clicks"),
     Input({"type": "gl-cite", "cid": ALL}, "n_clicks"), Input("gl-cy", "tapNodeData"),
     Input("gl-trace-pill", "n_clicks"),
     State("gl-store", "data"), State("gl-drawer-open", "data"), State("gl-only-used", "data"),
     prevent_initial_call=True,
 )
-def on_inspect(cite_clicks, tap, _pill, vm, is_open, only_used):
+def on_inspect(claim_clicks, cite_clicks, tap, _pill, vm, is_open, only_used):
+    NOOP = (no_update,) * 7
     if not vm:
-        return (no_update,) * 4
+        return NOOP
     trig = ctx.triggered_id
     # "view graph" summary pill → just toggle the drawer
     if trig == "gl-trace-pill":
         if not _pill:  # pill was just (re)created, not actually clicked
-            return (no_update,) * 4
+            return NOOP
         nxt = not is_open
-        return (no_update, no_update, drawer_style(nxt), nxt)
-    # citation span clicked → select the cited node(s) + light up the backing edge(s)
-    if isinstance(trig, dict) and trig.get("type") == "gl-cite":
+        return (no_update, no_update, drawer_style(nxt), nxt, no_update, no_update, no_update)
+
+    # Resolve which citation(s) the interaction points at.
+    #   claim text  → every source the claim cites (aggregate)
+    #   cluster num → that one source
+    #   node tap    → the tapped node + its incident edges (no citation)
+    cids = None
+    if isinstance(trig, dict) and trig.get("type") == "gl-claim":
+        if not any(c for c in (claim_clicks or [])):
+            return NOOP
+        cids = [c for c in trig["cids"].split(",") if c]
+    elif isinstance(trig, dict) and trig.get("type") == "gl-cite":
         if not any(c for c in (cite_clicks or [])):
-            return (no_update,) * 4
-        cid = trig["cid"]
-        cit = vm["citations"].get(cid, {})
-        node_id = cit.get("node")
-        sel = [x for x in (cit.get("node"), cit.get("node2")) if x]
-        return (detail_for(vm, node_id, cid),
-                build_elements(vm, selected=sel, hi_edges=cit.get("edges"), only_used=only_used),
-                drawer_style(True), True)
-    # node tapped in the graph → highlight the node and all its incident edges
-    if trig == "gl-cy" and tap:
+            return NOOP
+        cids = [trig["cid"]]
+    elif trig == "gl-cy" and tap:
         node_id = tap["id"]
-        incident = [(e["source"], e["target"]) for e in vm["edges"] if node_id in (e["source"], e["target"])]
+        edges = [(e["source"], e["target"]) for e in vm["edges"] if node_id in (e["source"], e["target"])]
+        # node tap cancels any pending grow-reset, then highlights the node
         return (detail_for(vm, node_id),
-                build_elements(vm, selected=node_id, hi_edges=incident, only_used=only_used),
-                drawer_style(True), True)
-    return (no_update,) * 4
+                build_elements(vm, selected=node_id, hi_edges=edges, only_used=only_used),
+                drawer_style(True), True, no_update, True, no_update)
+    else:
+        return NOOP
+
+    sel, edges, grow = [], [], []
+    for cid in cids:
+        cit = vm["citations"].get(cid, {})
+        for k in ("node", "node2"):
+            if cit.get(k) and cit[k] not in sel:
+                sel.append(cit[k])
+        edges.extend(cit.get("edges", []))
+        # image-grounded citation → swell the depicted node so the visual evidence pops
+        if cit.get("kind") == "image" and cit.get("node") and cit["node"] not in grow:
+            grow.append(cit["node"])
+    first = cids[0]
+    detail = detail_for(vm, vm["citations"].get(first, {}).get("node"), first)
+    els = build_elements(vm, selected=sel, hi_edges=edges, only_used=only_used, grow=grow)
+    if grow:
+        # arm the one-shot timer that eases the node back to size, restoring the selection
+        return (detail, els, drawer_style(True), True, {"sel": sel, "edges": edges}, False, 0)
+    # no image node → make sure a stale grow-reset can't clobber this selection
+    return (detail, els, drawer_style(True), True, no_update, True, no_update)
+
+
+# ── grown image node eases back to its normal size after a beat ────────────────
+@callback(
+    Output("gl-cy", "elements", allow_duplicate=True), Output("gl-grow-timer", "disabled", allow_duplicate=True),
+    Input("gl-grow-timer", "n_intervals"),
+    State("gl-grow", "data"), State("gl-store", "data"), State("gl-only-used", "data"),
+    prevent_initial_call=True,
+)
+def on_grow_reset(n, grow, vm, only_used):
+    if not n or not vm or not grow:
+        return no_update, True
+    # rebuild without the grow class → the size transition animates back down
+    return (build_elements(vm, selected=grow.get("sel"), hi_edges=grow.get("edges"), only_used=only_used), True)
 
 
 # ── toggle: show only the relations used to answer (graph) ─────────────────────
