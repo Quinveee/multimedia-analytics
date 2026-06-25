@@ -153,6 +153,7 @@ async def _achat(messages: list[dict], model: str = None) -> str:
         return "[MOCK] This is a dummy LLM response."
 
     model = model or config.ANSWER_MODEL
+    print(f"[achat] Using model: {model}")
     _provider, base_url, api_key, model_name = config.resolve_llm(model)
 
     from openai import AsyncOpenAI

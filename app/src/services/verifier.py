@@ -1,9 +1,9 @@
 import asyncio
 
+from sentence_transformers import CrossEncoder
+
 from src import config
 from src.services.llm import _achat
-
-from sentence_transformers import CrossEncoder
 
 _NLI_LABELS = ["contradiction", "entailment", "neutral"]
 _nli_model = CrossEncoder(config.NLI_MODEL)
@@ -42,6 +42,7 @@ async def _verify_llm(claim: str, triples: str) -> str:
         f"Claim: {claim}\n"
         "Answer:"
     )
+    print(f"[verify_claims] Using model: {config.VERIFIER_MODEL}")
     raw = await _achat(
         [{"role": "user", "content": prompt}], model=config.VERIFIER_MODEL
     )

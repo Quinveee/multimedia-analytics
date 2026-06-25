@@ -45,6 +45,7 @@ def _llm_entities(question: str) -> list[dict]:
         "dbr:Princeton_University\n\n"
         f"Question: {question}"
     )
+    print(f"[link_entities] Using model: {config.ENTITY_EXTRACTION_MODEL}")
     raw = _chat(
         [{"role": "user", "content": prompt}], model=config.ENTITY_EXTRACTION_MODEL
     )
