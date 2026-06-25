@@ -3,17 +3,13 @@ import asyncio
 from src import config
 from src.services.llm import _achat
 
-_nli_model = None
+from sentence_transformers import CrossEncoder
 
 _NLI_LABELS = ["contradiction", "entailment", "neutral"]
+_nli_model = CrossEncoder(config.NLI_MODEL)
 
 
 def _get_nli():
-    global _nli_model
-    if _nli_model is None:
-        from sentence_transformers import CrossEncoder
-
-        _nli_model = CrossEncoder(config.NLI_MODEL)
     return _nli_model
 
 
