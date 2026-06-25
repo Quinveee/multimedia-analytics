@@ -153,6 +153,7 @@ async def _achat(messages: list[dict], model: str = None) -> str:
         return "[MOCK] This is a dummy LLM response."
 
     model = model or config.ANSWER_MODEL
+    print(f"[achat] Using model: {model}")
     _provider, base_url, api_key, model_name = config.resolve_llm(model)
 
     from openai import AsyncOpenAI
@@ -175,7 +176,14 @@ async def answer_closed(question: str, model: str = None) -> str:
         [
             {
                 "role": "system",
-                "content": "Answer the question in a single short paragraph based on your knowledge. Do not use bullet points, lists, or headers.",
+                "content": (
+                    "Answer the question in a single short paragraph based on your knowledge. "
+                    "Each sentence must be self-contained and complete, with a clear subject, predicate, and object — "
+                    "do not start a sentence with a pronoun if the subject was in the previous sentence. "
+                    "This answer will be split into claims by period — so periods must only appear at the end of a sentence. "
+                    "Do not use abbreviations or initials with periods (write 'Doctor' not 'Dr.', 'Saint' not 'St.', and write full names without middle initials like 'Gerald Lewis' not 'Gerald A. Lewis'). "
+                    "Do not use bullet points, lists, or headers."
+                ),
             },
             {"role": "user", "content": question},
         ],
@@ -196,12 +204,13 @@ async def answer_grounded(
     # two channels separate lets the UI flag image-grounded claims distinctly and
     # stops the model from pinning a visual observation onto an unrelated fact.
     image_rule = (
-        " You are also shown labeled images of some entities (listed under \"Images\" "
+        ' You are also shown labeled images of some entities (listed under "Images" '
         "below, each with an [I#] id). When a sentence relies on what is visibly shown "
         "in one of those images rather than a listed fact — an appearance, a depicted "
         "scene, a visual detail — cite it with its image id, like [I1], and state only "
-        "what is actually visible. Never use [T#] for a purely visual observation, and "
-        "never use [I#] for a textual fact."
+        "what is actually visible. When describing an image, refer to the entity by the "
+        "name given in its image label rather than saying 'a person' or 'the individual'. "
+        "Never use [T#] for a purely visual observation, and never use [I#] for a textual fact."
         if has_images
         else ""
     )
@@ -212,7 +221,9 @@ async def answer_grounded(
             for i in range(len(image_paths))
         )
         image_list = f"\n\nImages:\n{lines}"
-        example_img = "Example image:\n[I1] (photograph of Marie Curie in her laboratory)\n"
+        example_img = (
+            "Example image:\n[I1] (photograph of Marie Curie in her laboratory)\n"
+        )
         example_img_sentence = (
             " A photograph shows her working at a laboratory bench amid glassware [I1]."
         )
@@ -229,6 +240,10 @@ async def answer_grounded(
         "[T2][T5], when a sentence draws on multiple facts. Every sentence that states "
         "a fact must carry at least one citation, and you may only state what the cited "
         "facts support." + image_rule + " "
+        "Each sentence must be self-contained and complete, with a clear subject, predicate, and object — "
+        "do not start a sentence with a pronoun or fragment if the subject was in the previous sentence. "
+        "This answer will be split into claims by period — so periods must only appear at the end of a sentence. "
+        "Do not use abbreviations or initials with periods (write 'Doctor' not 'Dr.', 'Saint' not 'St.', and write full names without middle initials like 'Gerald Lewis' not 'Gerald A. Lewis'). "
         "Do not use bullet points, lists, or headers.\n\n"
         "Example facts:\n"
         "[T1] Marie Curie birthPlace Warsaw\n"
@@ -299,7 +314,9 @@ def parse_claims(answer: str) -> list[dict]:
             dict.fromkeys(int(n) for n in re.findall(r"\[I(\d+)\]", segment))
         )
         claim = re.sub(r"\[[TI]\d+\]", "", segment)
-        claim = re.sub(r"\s+([.,;:!?])", r"\1", claim)  # drop space left before punctuation
+        claim = re.sub(
+            r"\s+([.,;:!?])", r"\1", claim
+        )  # drop space left before punctuation
         claim = re.sub(r"\s+", " ", claim).strip()
         if claim:
             result.append(

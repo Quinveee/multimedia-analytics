@@ -53,6 +53,16 @@ async def run_pipeline(
     # Rank the triples in the subgraph and verbalise them for the LLM
     triples = rank_triples(subgraph, question)
     triples_prompt = verbalise_triples(subgraph, question)
+    print(f"[pipeline] triples prompt:\n{triples_prompt or '(none)'}")
+
+    # cap subgraph to only nodes/edges used in the ranked triples
+    ranked_pairs = {(t["subject"], t["object"]) for t in triples}
+    display_edges = [e for e in subgraph["edges"] if (e["subject"], e["object"]) in ranked_pairs]
+    display_node_ids = {e["subject"] for e in display_edges} | {e["object"] for e in display_edges} | set(entity_uris)
+    subgraph = {
+        "nodes": [n for n in subgraph["nodes"] if n["id"] in display_node_ids],
+        "edges": display_edges,
+    }
 
     # Prepare images for entities that have them (seed entities only). The order
     # here defines the [I#] citation ids the model uses, so keep paths, labels and
