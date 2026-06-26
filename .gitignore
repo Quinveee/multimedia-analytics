@@ -28,6 +28,10 @@ offline/data/validated_questions.json
 offline/data/images/
 offline/data/coverage.csv
 
+# User-added KG (studio "add triple" feature) — not part of the frozen base
+offline/data/user_kg.db
+offline/data/user_images/
+
 # MMpedia download dir (entity2image.json 1.4 GB + Entlist*.tar 3 GB each)
 offline/mmpedia/
 

@@ -14,6 +14,11 @@ KG_PATH = Path(os.getenv("KG_PATH", "../offline/data/kg_subset.db"))
 KG_HOP = int(os.getenv("KG_HOP", "1"))
 KG_MAX_TRIPLES = int(os.getenv("KG_MAX_TRIPLES", "30"))
 
+# User-added triples and uploaded images, kept beside the base so the existing
+# /kg-images/ route serves them unchanged.
+USER_KG_PATH = Path(os.getenv("USER_KG_PATH", str(KG_PATH.parent / "user_kg.db")))
+USER_IMAGES_DIR = Path(os.getenv("USER_IMAGES_DIR", str(KG_PATH.parent / "user_images")))
+
 # ── Spotlight ─────────────────────────────────────────────────────────────────
 SPOTLIGHT_URL = os.getenv("SPOTLIGHT_URL", "http://localhost:2223/rest/annotate")
 
